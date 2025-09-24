@@ -12,6 +12,8 @@ const LandingPage: React.FC = () => {
     setSliderValue(value);
     if (value >= 95) {
       setIsUnlocked(true);
+      // Set verification flag in localStorage
+      localStorage.setItem('lolli-gooner-verified', 'true');
       setTimeout(() => {
         router.push('/');
       }, 2000);
@@ -140,6 +142,19 @@ const LandingPage: React.FC = () => {
           <div className="text-sm text-gray-500 space-y-2">
             <p>💡 <strong>Tip:</strong> Slide the cannon all the way to the right</p>
             <p>🔴 <strong>Remember:</strong> Arsenal till I die!</p>
+          </div>
+
+          {/* Skip for testing */}
+          <div className="mt-6 pt-4 border-t border-gray-200">
+            <button
+              onClick={() => {
+                localStorage.setItem('lolli-gooner-verified', 'true');
+                router.push('/');
+              }}
+              className="text-xs text-gray-400 hover:text-gray-600 underline"
+            >
+              Skip verification (for testing)
+            </button>
           </div>
         </div>
       </div>

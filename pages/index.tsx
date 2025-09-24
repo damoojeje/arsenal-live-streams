@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import Header from '../src/components/Header';
 import MatchList from '../src/components/MatchList';
 import { FilteredMatch } from '../src/types';
@@ -9,12 +10,14 @@ interface HomePageProps {
 }
 
 const HomePage: React.FC<HomePageProps> = ({ initialMatches = [] }) => {
+  const router = useRouter();
   const [matches, setMatches] = useState<FilteredMatch[]>(initialMatches);
   const [filteredMatches, setFilteredMatches] = useState<FilteredMatch[]>(initialMatches);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [selectedTeam, setSelectedTeam] = useState<string>('All Clubs');
+  const [hasPassedLanding, setHasPassedLanding] = useState(false);
 
   const fetchMatches = async () => {
     setLoading(true);
@@ -50,20 +53,42 @@ const HomePage: React.FC<HomePageProps> = ({ initialMatches = [] }) => {
     }
   }, [selectedTeam, matches]);
 
+  // Check if user has passed landing page verification
+  useEffect(() => {
+    const hasVerified = localStorage.getItem('lolli-gooner-verified');
+    if (!hasVerified) {
+      router.push('/landing');
+    } else {
+      setHasPassedLanding(true);
+    }
+  }, [router]);
+
   useEffect(() => {
     // If no initial matches, fetch them
-    if (initialMatches.length === 0) {
+    if (initialMatches.length === 0 && hasPassedLanding) {
       fetchMatches();
-    } else {
+    } else if (hasPassedLanding) {
       setLastUpdated(new Date());
     }
-  }, [initialMatches.length]);
+  }, [initialMatches.length, hasPassedLanding]);
 
   // Auto-refresh every 5 minutes
   useEffect(() => {
     const interval = setInterval(fetchMatches, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // Show loading while checking verification
+  if (!hasPassedLanding) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-arsenalRed mx-auto mb-4"></div>
+          <p className="text-gray-600">Verifying Gooner status...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
