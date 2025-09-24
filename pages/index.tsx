@@ -53,13 +53,15 @@ const HomePage: React.FC<HomePageProps> = ({ initialMatches = [] }) => {
     }
   }, [selectedTeam, matches]);
 
-  // Check if user has passed landing page verification
+  // Check if user has passed landing page verification (client-side only)
   useEffect(() => {
-    const hasVerified = localStorage.getItem('lolli-gooner-verified');
-    if (!hasVerified) {
-      router.push('/landing');
-    } else {
-      setHasPassedLanding(true);
+    if (typeof window !== 'undefined') {
+      const hasVerified = localStorage.getItem('lolli-gooner-verified');
+      if (!hasVerified) {
+        router.push('/landing');
+      } else {
+        setHasPassedLanding(true);
+      }
     }
   }, [router]);
 

@@ -26,12 +26,87 @@ export async function fetchSportsurge(): Promise<Match[]> {
     
     logger.info(`Sportsurge page loaded successfully`);
     
-    // Wait for event blocks to load
-    await page.waitForSelector('div.event', { timeout: 10000 });
+    // Wait for any content to load first
+    await page.waitForSelector('body', { timeout: 5000 });
+    
+    // Try multiple selectors for events
+    const selectors = [
+      'div.event',
+      '.event',
+      '[class*="event"]',
+      '.match',
+      '[class*="match"]',
+      '.game',
+      '[class*="game"]'
+    ];
+    
+    let eventSelector = null;
+    for (const selector of selectors) {
+      try {
+        await page.waitForSelector(selector, { timeout: 2000 });
+        eventSelector = selector;
+        break;
+      } catch (e) {
+        // Try next selector
+      }
+    }
+    
+    if (!eventSelector) {
+      logger.warn('No event selectors found, trying to get page content');
+      const content = await page.content();
+      logger.info(`Page content length: ${content.length}`);
+      // Log some content to debug
+      logger.info(`Page title: ${await page.title()}`);
+    }
     
     const eventData = await page.evaluate(() => {
       const events: any[] = [];
-      const eventElements = document.querySelectorAll('div.event');
+      
+      // Debug: log all elements with 'event' in class name
+      const allElements = document.querySelectorAll('*');
+      const eventClassElements = Array.from(allElements).filter(el => 
+        el.className && el.className.toString().toLowerCase().includes('event')
+      );
+      
+      console.log('Found elements with "event" in class:', eventClassElements.length);
+      
+      // Try different selectors
+      const selectors = [
+        'div.event',
+        '.event',
+        '[class*="event"]',
+        '.match',
+        '[class*="match"]',
+        '.game',
+        '[class*="game"]'
+      ];
+      
+      let foundElements = [];
+      for (const selector of selectors) {
+        const elements = document.querySelectorAll(selector);
+        if (elements.length > 0) {
+          console.log(`Found ${elements.length} elements with selector: ${selector}`);
+          foundElements = Array.from(elements);
+          break;
+        }
+      }
+      
+      if (foundElements.length === 0) {
+        // If no specific selectors work, look for any div with text content
+        const allDivs = document.querySelectorAll('div');
+        const textDivs = Array.from(allDivs).filter(div => 
+          div.textContent && div.textContent.trim().length > 0
+        );
+        console.log(`Found ${textDivs.length} divs with text content`);
+        
+        // Look for Arsenal specifically
+        const arsenalDivs = textDivs.filter(div => 
+          div.textContent.toLowerCase().includes('arsenal')
+        );
+        console.log(`Found ${arsenalDivs.length} divs mentioning Arsenal`);
+      }
+      
+      const eventElements = foundElements;
       
       eventElements.forEach((element, index) => {
         const homeTeamEl = element.querySelector('.home-team');
