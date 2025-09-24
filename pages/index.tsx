@@ -10,9 +10,11 @@ interface HomePageProps {
 
 const HomePage: React.FC<HomePageProps> = ({ initialMatches = [] }) => {
   const [matches, setMatches] = useState<FilteredMatch[]>(initialMatches);
+  const [filteredMatches, setFilteredMatches] = useState<FilteredMatch[]>(initialMatches);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [selectedTeam, setSelectedTeam] = useState<string>('All Clubs');
 
   const fetchMatches = async () => {
     setLoading(true);
@@ -26,6 +28,7 @@ const HomePage: React.FC<HomePageProps> = ({ initialMatches = [] }) => {
       
       const data = await response.json();
       setMatches(data);
+      setFilteredMatches(data);
       setLastUpdated(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch matches');
@@ -33,6 +36,19 @@ const HomePage: React.FC<HomePageProps> = ({ initialMatches = [] }) => {
       setLoading(false);
     }
   };
+
+  // Filter matches based on selected team
+  useEffect(() => {
+    if (selectedTeam === 'All Clubs') {
+      setFilteredMatches(matches);
+    } else {
+      const filtered = matches.filter(match => 
+        match.homeTeam.toLowerCase().includes(selectedTeam.toLowerCase()) ||
+        match.awayTeam.toLowerCase().includes(selectedTeam.toLowerCase())
+      );
+      setFilteredMatches(filtered);
+    }
+  }, [selectedTeam, matches]);
 
   useEffect(() => {
     // If no initial matches, fetch them
@@ -52,10 +68,10 @@ const HomePage: React.FC<HomePageProps> = ({ initialMatches = [] }) => {
   return (
     <>
       <Head>
-        <title>Arsenal Live Streams - Top European Football Clubs</title>
+        <title>lolli - Live Stream Links for Top Football Clubs</title>
         <meta 
           name="description" 
-          content="Live streaming links for Arsenal, Chelsea, Manchester City, Manchester United, Liverpool, Barcelona, Real Madrid, and other top European football clubs." 
+          content="Instant live-stream links for top Premier & Champions League clubs—no ads, no clutter. Arsenal, Chelsea, Manchester City, Liverpool, Barcelona, Real Madrid and more." 
         />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />
@@ -63,8 +79,8 @@ const HomePage: React.FC<HomePageProps> = ({ initialMatches = [] }) => {
 
       <div className="min-h-screen bg-gray-50 font-sf-pro">
         <Header 
-          title="Live Links for Top Clubs" 
-          subtitle="Arsenal, Chelsea, Manchester City, Manchester United, Liverpool, Barcelona, Real Madrid & More"
+          selectedTeam={selectedTeam}
+          onTeamChange={setSelectedTeam}
         />
         
         <main className="max-w-7xl mx-auto px-4 py-8">
@@ -73,10 +89,15 @@ const HomePage: React.FC<HomePageProps> = ({ initialMatches = [] }) => {
             <div className="flex items-center space-x-4">
               <h2 className="text-2xl font-bold text-gray-900">
                 Live Matches
+                {selectedTeam !== 'All Clubs' && (
+                  <span className="text-lg font-normal text-gray-600 ml-2">
+                    - {selectedTeam}
+                  </span>
+                )}
               </h2>
-              {matches.length > 0 && (
+              {filteredMatches.length > 0 && (
                 <span className="bg-arsenalRed text-white px-3 py-1 rounded-full text-sm font-medium">
-                  {matches.length} match{matches.length !== 1 ? 'es' : ''}
+                  {filteredMatches.length} match{filteredMatches.length !== 1 ? 'es' : ''}
                 </span>
               )}
             </div>
@@ -99,7 +120,7 @@ const HomePage: React.FC<HomePageProps> = ({ initialMatches = [] }) => {
 
           {/* Match List */}
           <MatchList 
-            matches={matches} 
+            matches={filteredMatches} 
             loading={loading} 
             error={error || undefined} 
           />

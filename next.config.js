@@ -5,6 +5,7 @@ const nextConfig = {
   },
   images: {
     domains: ['streamed.pk', 'sportsurge.bz', 'live.totalsportek007.com'],
+    unoptimized: true,
   },
   async headers() {
     return [

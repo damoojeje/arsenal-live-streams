@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2024-01-15
+
+### Added
+- **Landing Page**: Comedic Gooner verification page with interactive cannon slider
+- **Branding Update**: Renamed site to "lolli" with Arsenal cannon + lollipop logo
+- **Sticky Header**: Header now sticks to top with team filtering dropdown
+- **Team Filtering**: Filter matches by specific teams (Arsenal, Chelsea, etc.)
+- **Enhanced UX**: Tagline and improved navigation with mobile touch support
+- **Logo Design**: Custom SVG logo combining Arsenal cannon with lollipop theme
+
+### Changed
+- **Site Name**: Updated from "Arsenal Live Streams" to "lolli"
+- **Header Design**: Converted to sticky header with logo and team filter
+- **Navigation**: Streamlined with team-specific filtering options
+- **Title & Meta**: Updated page titles and descriptions for new branding
+
+### Technical Details
+- **New Pages**: `pages/landing.tsx` for Gooner verification
+- **Logo Assets**: `public/assets/arsenal/lolli-logo.svg` for branding
+- **Component Updates**: Header component with filtering functionality
+- **State Management**: Added team filtering state to main page
+- **Accessibility**: Proper ARIA labels and mobile touch targets
+
+---
+
 ## [1.0.0] - 2024-01-15
 
 ### Added
