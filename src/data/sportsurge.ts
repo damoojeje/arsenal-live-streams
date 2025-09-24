@@ -12,16 +12,18 @@ export async function fetchSportsurge(): Promise<Match[]> {
     logger.info(`Fetching from Sportsurge: ${LEAGUE_URL}`);
     
     const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      headless: "new",
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      timeout: 15000,
+      protocolTimeout: 30000
     });
     
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
     
     await page.goto(LEAGUE_URL, { 
-      waitUntil: 'networkidle2',
-      timeout: 30000 
+      waitUntil: 'domcontentloaded',
+      timeout: 15000 
     });
     
     logger.info(`Sportsurge page loaded successfully`);

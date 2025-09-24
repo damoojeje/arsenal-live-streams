@@ -27,60 +27,108 @@ export async function fetchTotalSportek(): Promise<Match[]> {
     
     const $ = cheerio.load(response.data);
     
-    // Look for live stream links
-    const streamElements = $('a.live-stream[data-match]');
+    // Look for match entries with team names in divs - prioritize live/upcoming matches
+    const matchContainers = $('a.competition[href*="vs-"], a[href*="vs-"]').slice(0, 20); // Limit to first 20 matches
     
-    streamElements.each((index, element) => {
+    matchContainers.each((index, element) => {
       const $el = $(element);
-      const dataMatch = $el.attr('data-match');
       const href = $el.attr('href');
       const text = $el.text().trim();
       
-      if (dataMatch && href && text) {
-        // Parse match information from data-match attribute or text
-        const matchInfo = parseMatchInfo(dataMatch, text);
+      // Look for team names in the container
+      const teamDivs = $el.find('div.row div.col-12');
+      if (teamDivs.length >= 2) {
+        const homeTeam = $(teamDivs[0]).text().trim();
+        const awayTeam = $(teamDivs[1]).text().trim();
         
-        if (matchInfo.homeTeam && matchInfo.awayTeam) {
-          matches.push({
-            id: `totalsportek-${index}`,
-            homeTeam: matchInfo.homeTeam,
-            awayTeam: matchInfo.awayTeam,
-            time: matchInfo.time || 'TBD',
-            date: matchInfo.date || new Date().toISOString().split('T')[0],
-            competition: matchInfo.competition || 'Football',
-            links: [{
-              url: href.startsWith('http') ? href : `${BASE_URL}${href}`,
-              quality: 'HD',
-              type: 'stream' as const,
-              language: 'English'
-            }],
-            source: 'totalsportek'
-          });
+        // Only include matches with our target teams
+        const targetTeams = ['Arsenal', 'Chelsea', 'Manchester City', 'Manchester United', 'Liverpool', 'Barcelona', 'Real Madrid', 'AC Milan', 'Inter Milan', 'Juventus', 'Napoli', 'PSG', 'Bayern Munich', 'Tottenham', 'Atletico Madrid'];
+        
+        if (homeTeam && awayTeam && homeTeam !== awayTeam) {
+          const isTargetMatch = targetTeams.some(team => 
+            homeTeam.toLowerCase().includes(team.toLowerCase()) || 
+            awayTeam.toLowerCase().includes(team.toLowerCase())
+          );
+          
+          if (isTargetMatch) {
+            matches.push({
+              id: `totalsportek-${index}`,
+              homeTeam: homeTeam,
+              awayTeam: awayTeam,
+              time: 'Live',
+              date: new Date().toISOString().split('T')[0],
+              competition: 'Football',
+              links: [{
+                url: href && href.startsWith('http') ? href : `${BASE_URL}${href || ''}`,
+                quality: 'HD',
+                type: 'stream' as const,
+                language: 'English'
+              }],
+              source: 'totalsportek'
+            });
+          }
         }
       }
     });
     
-    // Also look for regular match links
-    const matchLinks = $('a[href*="/match/"], a[href*="/watch/"]');
+    // Also look for match entries in the "Important Games" section
+    const matchEntries = $('div:contains("from now"), div:contains("Match Started")').filter(function() {
+      const text = $(this).text();
+      return text.includes('from now') || text.includes('Match Started');
+    });
     
-    matchLinks.each((index, element) => {
+    matchEntries.each((index, element) => {
+      const $el = $(element);
+      const text = $el.text().trim();
+      
+      // Parse match text like "24min from now Port Vale Arsenal"
+      const matchInfo = parseTotalSportekMatch(text);
+      
+      if (matchInfo.homeTeam && matchInfo.awayTeam) {
+        // Look for the "Live stream" button or link
+        const streamButton = $el.find('a:contains("Live stream"), a:contains("Stream")').first();
+        const streamUrl = streamButton.attr('href') || '#';
+        
+        matches.push({
+          id: `totalsportek-${index}`,
+          homeTeam: matchInfo.homeTeam,
+          awayTeam: matchInfo.awayTeam,
+          time: matchInfo.time || 'TBD',
+          date: matchInfo.date || new Date().toISOString().split('T')[0],
+          competition: matchInfo.competition || 'Football',
+          links: [{
+            url: streamUrl.startsWith('http') ? streamUrl : `${BASE_URL}${streamUrl}`,
+            quality: 'HD',
+            type: 'stream' as const,
+            language: 'English'
+          }],
+          source: 'totalsportek'
+        });
+      }
+    });
+    
+    // Also look for team-specific links in the "Top Teams" section - limit to first 10
+    const teamLinks = $('a[href*="Stream"], a[href*="stream"]').slice(0, 10);
+    
+    teamLinks.each((index, element) => {
       const $el = $(element);
       const href = $el.attr('href');
       const text = $el.text().trim();
       
-      if (href && text && !text.includes('Live Stream')) {
-        const matchInfo = parseMatchFromText(text);
+      if (href && text && text.includes('Stream')) {
+        // Extract team name from text like "Arsenal Streams"
+        const teamName = text.replace(/\s+Streams?/i, '').trim();
         
-        if (matchInfo.homeTeam && matchInfo.awayTeam) {
+        if (teamName && ['Arsenal', 'Chelsea', 'Manchester City', 'Manchester United', 'Liverpool', 'Barcelona', 'Real Madrid', 'AC Milan', 'Inter Milan', 'Juventus', 'Napoli', 'PSG', 'Bayern Munich'].includes(teamName)) {
           matches.push({
-            id: `totalsportek-link-${index}`,
-            homeTeam: matchInfo.homeTeam,
-            awayTeam: matchInfo.awayTeam,
-            time: matchInfo.time || 'TBD',
-            date: matchInfo.date || new Date().toISOString().split('T')[0],
-            competition: matchInfo.competition || 'Football',
+            id: `totalsportek-team-${index}`,
+            homeTeam: teamName,
+            awayTeam: 'TBD',
+            time: 'TBD',
+            date: new Date().toISOString().split('T')[0],
+            competition: 'Football',
             links: [{
-              url: href.startsWith('http') ? href : `${BASE_URL}${href}`,
+              url: href && href.startsWith('http') ? href : `${BASE_URL}${href || ''}`,
               quality: 'HD',
               type: 'stream' as const,
               language: 'English'
@@ -98,6 +146,36 @@ export async function fetchTotalSportek(): Promise<Match[]> {
   }
   
   return matches;
+}
+
+function parseTotalSportekMatch(text: string): {
+  homeTeam: string;
+  awayTeam: string;
+  time?: string;
+  date?: string;
+  competition?: string;
+} {
+  // Parse patterns like "24min from now Port Vale Arsenal" or "Match Started Getafe Deportivo Alaves"
+  const patterns = [
+    /(\d+min)\s+from\s+now\s+(.+?)\s+(.+?)(?:\s+Point|$)/i,
+    /Match\s+Started\s+(.+?)\s+(.+?)(?:\s+Point|$)/i,
+    /(\d+hr\s+\d+min)\s+from\s+now\s+(.+?)\s+(.+?)(?:\s+Point|$)/i
+  ];
+  
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      return {
+        homeTeam: match[2]?.trim() || '',
+        awayTeam: match[3]?.trim() || '',
+        time: match[1]?.trim() || 'TBD',
+        date: new Date().toISOString().split('T')[0],
+        competition: 'Football'
+      };
+    }
+  }
+  
+  return { homeTeam: '', awayTeam: '' };
 }
 
 function parseMatchInfo(dataMatch: string, text: string): {

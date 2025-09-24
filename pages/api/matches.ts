@@ -2,7 +2,6 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { fetchStreamed } from '../../src/data/streamed';
 import { fetchSportsurge } from '../../src/data/sportsurge';
 import { fetchTotalSportek } from '../../src/data/totalsportek';
-import { fetchMockData } from '../../src/data/mock';
 import { filterMatches } from '../../src/data/filter';
 import { FilteredMatch } from '../../src/types';
 import logger from '../../src/utils/logger';
@@ -18,12 +17,11 @@ export default async function handler(
   try {
     logger.info('Starting match aggregation process');
     
-    // Fetch from all sources in parallel (including mock data for testing)
-    const [streamedMatches, sportsurgeMatches, totalsportekMatches, mockMatches] = await Promise.allSettled([
+    // Fetch from all sources in parallel
+    const [streamedMatches, sportsurgeMatches, totalsportekMatches] = await Promise.allSettled([
       fetchStreamed(),
       fetchSportsurge(),
-      fetchTotalSportek(),
-      fetchMockData()
+      fetchTotalSportek()
     ]);
 
     // Process results and handle failures gracefully
@@ -48,13 +46,6 @@ export default async function handler(
       logger.info(`TotalSportek: ${totalsportekMatches.value.length} matches`);
     } else {
       logger.error(`TotalSportek failed: ${totalsportekMatches.reason}`);
-    }
-    
-    if (mockMatches.status === 'fulfilled') {
-      allMatches.push(...mockMatches.value);
-      logger.info(`Mock data: ${mockMatches.value.length} matches`);
-    } else {
-      logger.error(`Mock data failed: ${mockMatches.reason}`);
     }
 
     logger.info(`Total matches collected: ${allMatches.length}`);
