@@ -82,9 +82,9 @@ const HomePage: React.FC<HomePageProps> = ({ initialMatches = [] }) => {
       });
     }
 
-    // Remove matches that started more than 2 hours 3 minutes ago (completed matches)
+    // Remove matches that started more than 2 hours 30 minutes ago
     const now = new Date();
-    const cutoffTime = new Date(now.getTime() - (2 * 60 * 60 * 1000 + 3 * 60 * 1000)); // 2h 3min
+    const cutoffTime = new Date(now.getTime() - (2 * 60 * 60 * 1000 + 30 * 60 * 1000)); // 2h 30min
 
     filtered = filtered.filter(match => {
       // Keep live matches
@@ -112,7 +112,7 @@ const HomePage: React.FC<HomePageProps> = ({ initialMatches = [] }) => {
           return true;
         }
 
-        // If match was more than 2h 3min ago, remove it
+        // If match was more than 2h 30min ago, remove it
         if (matchTime < cutoffTime) {
           return false;
         }
