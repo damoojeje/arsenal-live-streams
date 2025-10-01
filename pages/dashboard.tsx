@@ -82,44 +82,7 @@ const HomePage: React.FC<HomePageProps> = ({ initialMatches = [] }) => {
       });
     }
 
-    // Remove matches that started more than 2 hours 30 minutes ago
-    const now = new Date();
-    const cutoffTime = new Date(now.getTime() - (2 * 60 * 60 * 1000 + 30 * 60 * 1000)); // 2h 30min
-
-    filtered = filtered.filter(match => {
-      // Keep live matches
-      if (match.time?.toLowerCase() === 'live') {
-        return true;
-      }
-
-      // Keep TBD matches
-      if (!match.time || match.time.toLowerCase() === 'tbd') {
-        return true;
-      }
-
-      // Check if match time is in the past
-      const timeMatch = match.time.match(/^(\d{1,2}):(\d{2})/);
-      if (timeMatch) {
-        const hours = parseInt(timeMatch[1], 10);
-        const minutes = parseInt(timeMatch[2], 10);
-
-        // Create date object for match time (today)
-        const matchTime = new Date(now);
-        matchTime.setHours(hours, minutes, 0, 0);
-
-        // If match time is in the future (later today), keep it
-        if (matchTime > now) {
-          return true;
-        }
-
-        // If match was more than 2h 30min ago, remove it
-        if (matchTime < cutoffTime) {
-          return false;
-        }
-      }
-
-      return true; // Keep if we can't determine time
-    });
+    // No time-based filtering - display all matches from the API
 
     // Sort matches by time
     filtered = filtered.sort((a, b) => {
