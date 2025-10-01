@@ -25,8 +25,13 @@ export default async function handler(
   res: NextApiResponse
 ) {
   try {
-    // Fetch schedule from DaddyLive
-    const response = await fetch('https://dlhd.dad/schedule/schedule-generated.json');
+    // Fetch schedule from DaddyLive - correct endpoint
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+      'Referer': 'https://daddylive.sx/',
+      'Origin': 'https://daddylive.sx/'
+    };
+    const response = await fetch('https://daddylive.sx/schedule/schedule-generated.php', { headers });
     const scheduleData = await response.json();
 
     const matches: ParsedMatch[] = [];
