@@ -2,10 +2,17 @@ import { useRouter } from 'next/router';
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
+
+// Dynamically import ad-blocked player (client-side only)
+const AdBlockedPlayer = dynamic(() => import('../../src/components/AdBlockedPlayer'), {
+  ssr: false,
+});
 
 /**
- * Stream Player Page
- * Supports DaddyLive and Mad Titan Sports iframe streams
+ * Stream Player Page with Built-in Ad Blocking
+ * Blocks popups, new tabs, and overlay ads
+ * Mobile-optimized viewing experience
  */
 
 export default function PlayerPage() {
@@ -91,31 +98,28 @@ export default function PlayerPage() {
         </button>
       </div>
 
-      {/* Player Container */}
+      {/* Player Container with Ad Blocking */}
       <div
         id="player-container"
         className="relative w-full bg-black"
         style={{ height: 'calc(100vh - 60px)' }}
       >
-        <iframe
-          src={iframeUrl}
-          width="100%"
-          height="100%"
-          style={{ border: 0 }}
-          allowFullScreen
-          allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-          referrerPolicy="no-referrer"
-          title="Live Stream Player"
-          className="absolute inset-0"
-        />
+        {channelId && (
+          <AdBlockedPlayer
+            streamUrl={iframeUrl}
+            channelId={channelId as string}
+          />
+        )}
       </div>
 
       {/* Instructions/Info Bar */}
       {!isFullscreen && (
         <div className="bg-gray-800 text-gray-300 px-4 py-3 text-center text-sm">
           <p>
-            💡 <strong>Tip:</strong> Click the Fullscreen button above for the best viewing experience.
-            Stream quality may take a few seconds to adjust.
+            🛡️ <strong>Built-in Ad Blocker Active:</strong> Popups blocked • New tabs prevented • Mobile optimized
+          </p>
+          <p className="text-xs text-gray-400 mt-2">
+            Click the Fullscreen button in the player for the best viewing experience.
           </p>
         </div>
       )}
@@ -131,16 +135,9 @@ export default function PlayerPage() {
             All content is provided by third-party sources and we do not host, upload, or control any of the streams.
           </p>
           <p className="leading-relaxed">
-            <strong className="text-gray-300">💡 For Best Experience:</strong><br />
-            We recommend using an ad blocker such as{' '}
-            <a href="https://ublockorigin.com" target="_blank" rel="noopener noreferrer" className="text-arsenalRed hover:underline">
-              uBlock Origin
-            </a>
-            {' '}or{' '}
-            <a href="https://adguard.com" target="_blank" rel="noopener noreferrer" className="text-arsenalRed hover:underline">
-              AdGuard
-            </a>
-            {' '}to block embedded advertisements.
+            <strong className="text-gray-300">🛡️ Built-in Protection:</strong><br />
+            This player includes automatic ad blocking to prevent popups, new tabs, and overlay ads.
+            Optimized for mobile devices - no external ad blocker needed.
           </p>
           <p className="text-gray-600 text-[10px] mt-4">
             Stream source: DaddyLive via Mad Titan Sports • Interface by lolli
