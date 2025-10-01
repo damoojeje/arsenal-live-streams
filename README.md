@@ -226,7 +226,7 @@ ExecStart=/usr/bin/npm start
 Restart=always
 RestartSec=10
 Environment=NODE_ENV=production
-Environment=PORT=3003
+Environment=PORT=3002
 
 [Install]
 WantedBy=multi-user.target
@@ -245,7 +245,7 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/lolli.eniolabi.com/privkey.pem;
 
     location / {
-        proxy_pass http://localhost:3003;
+        proxy_pass http://localhost:3002;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -258,7 +258,7 @@ server {
 ## Environment Variables
 
 - `NODE_ENV=production` - Production environment
-- `PORT=3003` - Application port (proxied by nginx)
+- `PORT=3002` - Application port (proxied by nginx) - **RESERVED FOR lolli.eniolabi.com**
 
 ## Monitoring
 
