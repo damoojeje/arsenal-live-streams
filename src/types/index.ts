@@ -12,8 +12,9 @@ export interface Match {
 export interface StreamLink {
   url: string;
   quality: string;
-  type: 'stream' | 'acestream' | 'sopcast';
+  type: 'stream' | 'acestream' | 'sopcast' | 'hls';
   language?: string;
+  channelName?: string;
 }
 
 export interface Team {
@@ -23,4 +24,11 @@ export interface Team {
 
 export interface FilteredMatch extends Match {
   isArsenalMatch: boolean;
+  streamLinks?: StreamLinkLegacy[]; // Legacy compatibility
+}
+
+export interface StreamLinkLegacy {
+  source: string;
+  url: string;
+  quality: string;
 }

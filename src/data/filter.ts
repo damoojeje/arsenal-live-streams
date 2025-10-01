@@ -28,20 +28,28 @@ const teamAliases: Record<string, string[]> = {
 
 export function filterMatches(input: Match[]): FilteredMatch[] {
   logger.info(`Filtering ${input.length} matches for target clubs`);
-  
+
   const filteredMatches: FilteredMatch[] = [];
-  
+
   for (const match of input) {
     const isArsenalMatch = isTargetClubMatch(match.homeTeam, match.awayTeam);
-    
+
     if (isArsenalMatch) {
+      // Convert new links format to legacy streamLinks format for backward compatibility
+      const streamLinks = match.links?.map(link => ({
+        source: match.source || 'Unknown',
+        url: link.url,
+        quality: link.quality || 'SD'
+      })) || [];
+
       filteredMatches.push({
         ...match,
-        isArsenalMatch
+        isArsenalMatch,
+        streamLinks // Add legacy format
       });
     }
   }
-  
+
   logger.info(`Filtered to ${filteredMatches.length} matches involving target clubs`);
   return filteredMatches;
 }

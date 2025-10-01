@@ -24,6 +24,11 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
+  // Set cache-control headers to prevent caching
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
   try {
     // Fetch schedule from DaddyLive - using resolved domain
     const headers = {
@@ -95,10 +100,11 @@ export default async function handler(
           // Get all available channels for this match
           const channels = Array.isArray(event.channels) ? event.channels : [];
           const streamLinks = channels.map((channel: any) => ({
-            source: channel.channel_name || 'DaddyLive',
-            url: `https://dlhd.dad/stream/stream-${channel.channel_id}.php`,
+            channelName: channel.channel_name || 'DaddyLive',
+            url: channel.channel_id,  // Just the channel ID, not the full URL
             channelId: channel.channel_id,
-            quality: 'HD'
+            quality: 'HD',
+            type: 'stream'
           }));
 
           // Skip if no channels available
@@ -118,7 +124,7 @@ export default async function handler(
             time: event.time || 'TBD',
             date: currentDate,
             competition,
-            links: [],
+            links: streamLinks,  // Use streamLinks as links
             source: 'daddylive',
             isArsenalMatch,
             streamLinks

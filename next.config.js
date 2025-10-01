@@ -1,8 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    appDir: false,
-  },
   images: {
     domains: ['streamed.pk', 'sportsurge.bz', 'live.totalsportek007.com'],
     unoptimized: true,

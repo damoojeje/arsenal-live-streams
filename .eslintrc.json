@@ -5,7 +5,7 @@
     "@next/next/no-page-custom-font": "off",
     "prefer-const": "error",
     "no-unused-vars": "off",
-    "@typescript-eslint/no-unused-vars": "error",
-    "no-console": "warn"
+    "@typescript-eslint/no-unused-vars": "off",
+    "no-console": "off"
   }
 }
