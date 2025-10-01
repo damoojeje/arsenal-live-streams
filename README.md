@@ -1,57 +1,58 @@
-# Arsenal Live Streams
+# lolli - Live Football Streams
 
-A Next.js application that aggregates live streaming links for top European football clubs including Arsenal, Chelsea, Manchester City, Manchester United, Liverpool, Barcelona, Real Madrid, and more.
+A professional Next.js application that provides instant live streaming links for top football clubs worldwide. Features Arsenal-themed branding and real-time match data from Mad Titan Sports backend.
 
 ## Features
 
-- **Multi-source aggregation**: Collects live streams from Streamed.pk, Sportsurge.bz, and TotalSportek007.com
-- **Smart filtering**: Only shows matches involving target European clubs
-- **Real-time updates**: Auto-refreshes every 5 minutes
-- **Responsive design**: Apple-inspired UI with Arsenal red (#DB0007) accents
-- **Accessibility**: WCAG AA compliant with proper focus management
-- **Error handling**: Graceful fallbacks and user-friendly error messages
+- **Mad Titan Sports Integration**: Real-time match data from magnetic.website backend
+- **DaddyLive Streaming**: High-quality iframe streams for all live matches
+- **Smart Match Management**: Auto-removes matches 2h 3min after kickoff
+- **Real-time Updates**: Auto-refreshes every 10 minutes
+- **Professional UI**: Clean, Arsenal-branded interface with red (#DB0007) theme
+- **Multi-Competition Support**: Premier League, Champions League, La Liga, Serie A, Bundesliga, Ligue 1, and more
+- **Advanced Filtering**: Filter by team, competition, and country
+- **Responsive Design**: Mobile-optimized with fullscreen streaming support
+- **Arsenal Verification**: Fun landing page with slider verification
 
 ## Tech Stack
 
 - **Framework**: Next.js 14 with TypeScript
 - **Styling**: TailwindCSS with custom Arsenal theme
-- **Data Sources**: Streamed.pk, Sportsurge.bz, TotalSportek007.com
-- **Parsing**: Cheerio for HTML scraping, Puppeteer for dynamic content
-- **Testing**: Jest + React Testing Library + Supertest
-- **Logging**: Winston for structured logging
-- **Deployment**: Vercel with GitHub Actions CI/CD
+- **Data Source**: Mad Titan Sports backend (magnetic.website)
+- **Streaming**: DaddyLive iframe integration
+- **State Management**: React Hooks with localStorage persistence
+- **Icons & Assets**: Custom Arsenal branding (cannon, lollipop logo)
+- **Deployment**: systemd service on Ubuntu server
 
 ## Project Structure
 
 ```
-src/
-├── components/          # React components
-│   ├── Header.tsx
-│   ├── MatchCard.tsx
-│   └── MatchList.tsx
-├── data/               # Data source modules
-│   ├── streamed.ts
-│   ├── sportsurge.ts
-│   ├── totalsportek.ts
-│   └── filter.ts
-├── config/             # Configuration files
-│   └── teams.json
-├── types/              # TypeScript type definitions
-│   └── index.ts
-├── utils/              # Utility functions
-│   └── logger.ts
-└── styles/             # Global styles
-    └── globals.css
-
 pages/
-├── api/                # API routes
-│   └── matches.ts
+├── api/
+│   └── magnetic-games.ts    # Fetches live games from magnetic.website
+├── player/
+│   └── [channelId].tsx     # DaddyLive stream player with fullscreen
 ├── _app.tsx
-└── index.tsx
+├── index.tsx               # Landing page with Arsenal verification
+└── dashboard.tsx           # Main dashboard with match list
 
-test/                   # Test files
-├── data/
-└── api/
+src/
+├── components/
+│   ├── Header.tsx          # Navigation with filters
+│   ├── MatchCard.tsx       # Individual match display
+│   └── MatchList.tsx       # Grid layout for matches
+├── types/
+│   └── index.ts            # TypeScript type definitions
+├── utils/
+│   └── linkQuality.ts      # Stream quality scoring
+└── styles/
+    └── globals.css         # TailwindCSS + Arsenal theme
+
+public/
+├── assets/
+│   └── arsenal/            # Arsenal branding assets
+├── icons/                  # PWA icons
+└── manifest.json           # Progressive Web App config
 ```
 
 ## Getting Started
@@ -97,113 +98,173 @@ npm run dev
 - `npm run test:watch` - Run tests in watch mode
 - `npm run test:coverage` - Run tests with coverage
 
-## Data Sources
+## Architecture
 
-### Streamed.pk
-- **API**: `/api/events?sport=football&date=YYYY-MM-DD`
-- **Fallback**: HTML scraping of `/category/football`
-- **Format**: JSON API with HTML fallback
+### Mad Titan Sports Integration
 
-### Sportsurge.bz
-- **Method**: Puppeteer for dynamic content rendering
-- **Target**: `/leagues/premier-league`
-- **Format**: Client-side rendered content
+This application integrates with the Mad Titan Sports backend (same source used by the Mad Titan Kodi addon):
 
-### TotalSportek007.com
-- **Method**: HTML scraping with Cheerio
-- **Target**: Homepage live stream links
-- **Format**: Static HTML with data attributes
+- **Data Source**: `https://magnetic.website/todays_games2.txt`
+- **Format**: Pipe-delimited text (TIME | SPORT | EVENT | CHANNELS)
+- **Update Frequency**: Real-time, fetched every 10 minutes
+- **Filtering**: Football/Soccer matches only
 
-## Filtering Logic
+### Match Data Flow
 
-The application filters matches based on a predefined list of target clubs:
+1. **Backend API** (`/api/magnetic-games`) fetches live games from magnetic.website
+2. **Parser** extracts team names, times, and competition info
+3. **Dashboard** displays filtered matches with auto-refresh
+4. **Match Cards** show stream links routing through `/player/[channelId]`
+5. **Player Page** embeds DaddyLive iframe streams
 
-- Arsenal, Chelsea, Manchester City, Manchester United
-- Newcastle United, Liverpool
-- Barcelona, Real Madrid
-- AC Milan, Inter Milan, Juventus, Napoli
-- PSG, Bayern Munich
+### Smart Match Management
 
-Filtering is case-insensitive and supports team aliases (e.g., "Man City" for "Manchester City").
+- **Live Matches**: Displayed with animated red indicator
+- **Upcoming Matches**: Sorted by time (earliest first)
+- **TBD Matches**: Shown at the end of the list
+- **Auto-Removal**: Matches removed 2h 3min after kickoff
+- **Time Conversion**: UTC times converted to user's local timezone
+
+### Filtering System
+
+The application provides three filter levels:
+
+1. **Team Filter**: Filter by specific clubs (All Clubs, Arsenal, Chelsea, Man City, etc.)
+2. **Competition Filter**: Filter by league/tournament (All, Premier League, Champions League, etc.)
+3. **Country Filter**: Filter by country/region (All, England, Spain, Europe, etc.)
+
+Filters are case-insensitive and support partial matching.
 
 ## API Endpoints
 
-### GET /api/matches
+### GET /api/magnetic-games
 
-Returns filtered live streaming matches.
+Fetches live football matches from Mad Titan Sports backend.
 
 **Response:**
 ```json
 [
   {
-    "id": "streamed-1",
+    "id": "magnetic-1727716800000-0",
     "homeTeam": "Arsenal",
     "awayTeam": "Chelsea",
     "time": "15:00",
-    "date": "2024-01-15",
-    "competition": "Premier League",
-    "links": [
+    "date": "2025-09-30T12:00:00.000Z",
+    "competition": "England Premier League",
+    "links": [],
+    "source": "magnetic",
+    "isArsenalMatch": true,
+    "streamLinks": [
       {
-        "url": "https://streamed.pk/watch/123",
-        "quality": "HD",
-        "type": "stream",
-        "language": "English"
+        "source": "DaddyLive",
+        "url": "#",
+        "quality": "HD"
       }
-    ],
-    "source": "streamed-api",
-    "isArsenalMatch": true
+    ]
   }
 ]
 ```
 
-**Cache Headers:**
-- `Cache-Control: s-maxage=60, stale-while-revalidate=300`
+**Data Processing:**
+- Parses `todays_games2.txt` from magnetic.website
+- Filters for football/soccer matches only
+- Extracts team names from "Team A vs Team B" format
+- Identifies Arsenal matches automatically
+- Returns JSON array of parsed matches
 
-## Testing
+### Player Routes
 
-The project includes comprehensive tests:
+**GET /player/[channelId]**
 
-- **Unit tests**: Data modules and utility functions
-- **Integration tests**: API endpoints
-- **Component tests**: React components
+Dynamic route for DaddyLive stream player.
 
-Run tests:
-```bash
-npm test
-```
+- **channelId**: DaddyLive channel identifier
+- **Iframe URL**: `https://dlhd.dad/stream/stream-{channelId}.php`
+- **Features**: Fullscreen support, back navigation, live indicator
 
 ## Deployment
 
-### Vercel (Recommended)
+### Production Server (systemd)
 
-1. Connect your GitHub repository to Vercel
-2. Set environment variables in Vercel dashboard
-3. Deploy automatically on push to main branch
+This application runs as a systemd service on Ubuntu:
 
-### Manual Deployment
-
-1. Build the application:
+1. **Build the application:**
 ```bash
 npm run build
 ```
 
-2. Start the production server:
+2. **Install systemd service:**
 ```bash
-npm start
+sudo systemctl enable arsenal-streams.service
+sudo systemctl start arsenal-streams.service
+```
+
+3. **Check service status:**
+```bash
+sudo systemctl status arsenal-streams.service
+```
+
+4. **View logs:**
+```bash
+sudo journalctl -u arsenal-streams.service -f
+```
+
+### systemd Service Configuration
+
+Location: `/etc/systemd/system/arsenal-streams.service`
+
+```ini
+[Unit]
+Description=Arsenal Live Streams - lolli
+After=network.target
+
+[Service]
+Type=simple
+User=olabi
+WorkingDirectory=/home/olabi/docker/watch_arsenal
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=10
+Environment=NODE_ENV=production
+Environment=PORT=3003
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### nginx Reverse Proxy
+
+The application is served through nginx with SSL:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name lolli.eniolabi.com;
+
+    ssl_certificate /etc/letsencrypt/live/lolli.eniolabi.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/lolli.eniolabi.com/privkey.pem;
+
+    location / {
+        proxy_pass http://localhost:3003;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
 ```
 
 ## Environment Variables
 
-- `NODE_ENV` - Environment (development/production)
-- `VERCEL_TOKEN` - Vercel deployment token (for CI/CD)
-- `VERCEL_ORG_ID` - Vercel organization ID
-- `VERCEL_PROJECT_ID` - Vercel project ID
+- `NODE_ENV=production` - Production environment
+- `PORT=3003` - Application port (proxied by nginx)
 
 ## Monitoring
 
-- **Logging**: Winston logs to `src/logs/fetch.log`
-- **Error Tracking**: Sentry integration (optional)
-- **Health Checks**: API endpoint monitoring
+- **systemd logs**: `journalctl -u arsenal-streams.service`
+- **Service status**: `systemctl status arsenal-streams.service`
+- **Auto-restart**: Enabled with 10-second delay on failure
 
 ## Contributing
 
@@ -217,10 +278,32 @@ npm start
 
 This project is licensed under the MIT License.
 
+## Version History
+
+### v2.0 - Production Release (September 2025)
+- Integrated Mad Titan Sports backend API
+- Removed provider selection UI (single DaddyLive source)
+- Removed mock/sample data completely
+- Professional UI improvements (reduced header height)
+- Smart match removal (2h 3min post-kickoff)
+- Fixed visual issues (Arsenal red branding throughout)
+- Updated documentation and production deployment
+
+### v1.0 - Initial Release
+- Multi-provider architecture (Streamed.pk, Sportsurge, TotalSportek)
+- Basic filtering and match display
+- Arsenal-themed UI
+
 ## Credits
 
-Designed and developed by [damoojeje](https://github.com/damoojeje)
+Designed and developed by [damoojeje](https://github.com/damoojeje/arsenal-live-streams)
+
+**Arsenal till I die!** 🔴
 
 ---
 
-**Note**: This application is for educational purposes. Please respect the terms of service of the streaming platforms and ensure you have proper rights to access the content.
+## Disclaimer
+
+This application aggregates publicly available streaming links. All streams are provided by third-party sources. We do not host, upload, or control any of the content.
+
+**Recommended**: Use an ad blocker like [uBlock Origin](https://ublockorigin.com) or [AdGuard](https://adguard.com) for the best viewing experience.
