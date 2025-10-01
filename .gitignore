@@ -104,35 +104,8 @@ Thumbs.db
 # Vercel
 .vercel
 
-# Development documentation (not needed in production)
-AD_BLOCKING_ANALYSIS.md
-API Standards Guidelines.md
-Arsenal Streams DaddyLive.md
-COMPREHENSIVE_STRATEGY.md
-CORE_IMPROVEMENTS.md
-Creating Tags.md
-DADDYLIVE_INTEGRATION_PLAN.md
-DEPLOYMENT_COMPLETE.md
-DEPLOYMENT_SUMMARY.md
-Development Guidelines.md
-EXECUTIVE_SUMMARY.md
-GETTING_STARTED.md
-IMPLEMENTATION_COMPLETE.md
-IMPROVEMENTS_COMPLETE.md
-KODI_IMPLEMENTATION_GUIDE.md
-MAD_TITAN_SPORTS_ANALYSIS.md
-MIGRATION_COMPLETE.md
-PERFORMANCE_NOTES.md
-Product Requirements Document.md
-RESEARCH_SUMMARY.md
-SCRAPER_DEBUG_RESULTS.md
-SIDEBAR_IMPLEMENTATION.md
-STREAM_ROUTING.md
-prompt.txt
-start file.txt
-claude-context.md
-claude-context.md.backup
-arsenal-rule.mdc
+# Development documentation (kept locally, not in git)
+docs/
 
 # Development artifacts
 debug-scrapers.js
