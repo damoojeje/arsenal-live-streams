@@ -70,6 +70,8 @@ def extract_stream_url(channel_id: str, debug: bool = False) -> Optional[Dict[st
             # Step 5: Find PLAYER 2 iframe
             player2_match = re.findall(r'data-url="([^"]+)"\s+title="PLAYER 2"', html)
             if not player2_match:
+                if debug:
+                    print("DEBUG: PLAYER 2 not found", file=sys.stderr)
                 return None
 
             # Handle relative URLs properly
@@ -78,63 +80,123 @@ def extract_stream_url(channel_id: str, debug: bool = False) -> Optional[Dict[st
                 url2 = base_url + player2_url
             else:
                 url2 = player2_url
+
+            if debug:
+                print(f"DEBUG: PLAYER 2 URL: {url2}", file=sys.stderr)
+
             response = requests.get(url2, headers=headers, timeout=10)
             html = response.text
+
+            if debug:
+                print(f"DEBUG: PLAYER 2 HTML length: {len(html)}", file=sys.stderr)
 
             # Step 6: Find nested iframe
             iframe_match = re.search(r'iframe src="([^"]*)', html)
             if not iframe_match:
+                if debug:
+                    print("DEBUG: Nested iframe not found", file=sys.stderr)
                 return None
 
             url2 = iframe_match.group(1)
+            if debug:
+                print(f"DEBUG: Nested iframe URL: {url2}", file=sys.stderr)
+
             response = requests.get(url2, headers=headers, timeout=10)
             html = response.text
+
+            if debug:
+                print(f"DEBUG: Final embed HTML length: {len(html)}", file=sys.stderr)
 
         # Step 7: Extract JavaScript variables
         # Extract CHANNEL_KEY
         ck_match = re.search(r'const\s+CHANNEL_KEY\s*=\s*"([^"]+)"', html)
         if not ck_match:
+            if debug:
+                print("DEBUG: CHANNEL_KEY not found", file=sys.stderr)
             return None
         channel_key = ck_match.group(1)
+        if debug:
+            print(f"DEBUG: CHANNEL_KEY: {channel_key}", file=sys.stderr)
 
-        # Extract XJZ bundle
-        bundle_match = re.search(r'const\s+XJZ\s*=\s*"([^"]+)"', html)
+        # Extract bundle (try multiple variable names - they change it frequently)
+        bundle_match = re.search(r'const\s+(XJZ|XKZK|xjz|xkzk)\s*=\s*"([^"]+)"', html)
         if not bundle_match:
+            if debug:
+                print("DEBUG: Bundle variable not found (tried XJZ, XKZK)", file=sys.stderr)
             return None
-        bundle = bundle_match.group(1)
+        bundle_name = bundle_match.group(1)
+        bundle = bundle_match.group(2)
+        if debug:
+            print(f"DEBUG: Bundle found as '{bundle_name}' (length: {len(bundle)})", file=sys.stderr)
 
         # Decode bundle (nested base64)
         parts = json.loads(base64.b64decode(bundle).decode('utf-8'))
         decoded_parts = {}
         for k, v in parts.items():
-            decoded_parts[k] = base64.b64decode(v).decode('utf-8')
+            try:
+                decoded_parts[k] = base64.b64decode(v).decode('utf-8')
+            except:
+                decoded_parts[k] = v  # Some values might not be base64
 
-        # Extract host array
-        host_match = re.search(r'host\s*=\s*\[([^\]]+)\]', html)
-        if not host_match:
-            return None
+        if debug:
+            print(f"DEBUG: Decoded bundle keys: {list(decoded_parts.keys())}", file=sys.stderr)
 
-        host_parts = [part.strip().strip('"\'') for part in host_match.group(1).split(',')]
-        host = ''.join(host_parts)
+        # Get host from bundle (newer method) or from host array (older method)
+        if 'b_host' in decoded_parts:
+            host = decoded_parts['b_host']
+            if debug:
+                print(f"DEBUG: Host from bundle: {host}", file=sys.stderr)
+        else:
+            # Extract host array (fallback to older method)
+            host_match = re.search(r'host\s*=\s*\[([^\]]+)\]', html)
+            if not host_match:
+                if debug:
+                    print("DEBUG: Host not found", file=sys.stderr)
+                return None
+            host_parts = [part.strip().strip('"\'') for part in host_match.group(1).split(',')]
+            host = ''.join(host_parts)
+            if debug:
+                print(f"DEBUG: Host from array: {host}", file=sys.stderr)
 
-        # Step 8: XOR decode secret path
-        bx = [40, 60, 61, 33, 103, 57, 33, 57]
-        sc = ''.join(chr(b ^ 73) for b in bx)
+        # Step 8: Get script path (newer method) or XOR decode (older method)
+        if 'b_script' in decoded_parts:
+            script_path = decoded_parts['b_script']
+            if debug:
+                print(f"DEBUG: Script path: {script_path}", file=sys.stderr)
+        else:
+            # Fallback to XOR decode
+            bx = [40, 60, 61, 33, 103, 57, 33, 57]
+            script_path = ''.join(chr(b ^ 73) for b in bx)
+            if debug:
+                print(f"DEBUG: XOR decoded script path: {script_path}", file=sys.stderr)
 
         # Build authentication URL
         auth_url = (
-            f'{host}{sc}?channel_id={channel_key}&'
+            f'{host}{script_path}?channel_id={channel_key}&'
             f'ts={decoded_parts.get("b_ts", "")}&'
             f'rnd={decoded_parts.get("b_rnd", "")}&'
             f'sig={decoded_parts.get("b_sig", "")}'
         )
 
+        if debug:
+            print(f"DEBUG: Auth URL: {auth_url}", file=sys.stderr)
+
         # Step 9: Call auth endpoint
-        requests.get(auth_url, headers=headers, timeout=10)
+        auth_response = requests.get(auth_url, headers=headers, timeout=10)
+        if debug:
+            print(f"DEBUG: Auth response status: {auth_response.status_code}", file=sys.stderr)
 
         # Step 10: Get server assignment
         server_lookup_match = re.findall(r'fetchWithRetry\(\s*\'([^\']*)', html)
         if not server_lookup_match:
+            if debug:
+                print("DEBUG: fetchWithRetry not found, trying direct lookup", file=sys.stderr)
+            # Try alternate pattern
+            server_lookup_match = re.findall(r'fetch\(\s*[\'"]([^\'"]*/api/[^\'\"]*)', html)
+
+        if not server_lookup_match:
+            if debug:
+                print("DEBUG: Server lookup endpoint not found", file=sys.stderr)
             return None
 
         server_lookup = server_lookup_match[0]
@@ -142,7 +204,22 @@ def extract_stream_url(channel_id: str, debug: bool = False) -> Optional[Dict[st
         host_raw = 'https://' + host_raw.split('/')[0]
 
         server_lookup_url = f"{host_raw}{server_lookup}{channel_key}"
-        server_response = requests.get(server_lookup_url, headers=headers, timeout=10)
+
+        # Use proper headers with the CDN domain
+        cdn_headers = {
+            'User-Agent': UA,
+            'Referer': 'https://jxoxkplay.xyz/',
+            'Origin': 'https://jxoxkplay.xyz'
+        }
+
+        if debug:
+            print(f"DEBUG: Server lookup URL: {server_lookup_url}", file=sys.stderr)
+
+        server_response = requests.get(server_lookup_url, headers=cdn_headers, timeout=10)
+        if debug:
+            print(f"DEBUG: Server response status: {server_response.status_code}", file=sys.stderr)
+            print(f"DEBUG: Server response: {server_response.text[:200]}", file=sys.stderr)
+
         server_data = server_response.json()
         server_key = server_data.get('server_key', '')
 
