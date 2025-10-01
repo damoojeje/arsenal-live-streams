@@ -25,13 +25,13 @@ export default async function handler(
   res: NextApiResponse
 ) {
   try {
-    // Fetch schedule from DaddyLive - correct endpoint
+    // Fetch schedule from DaddyLive - using resolved domain
     const headers = {
       'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
-      'Referer': 'https://daddylive.sx/',
-      'Origin': 'https://daddylive.sx/'
+      'Referer': 'https://daddylivestream.com/',
+      'Origin': 'https://daddylivestream.com'
     };
-    const response = await fetch('https://daddylive.sx/schedule/schedule-generated.php', { headers });
+    const response = await fetch('https://daddylivestream.com/schedule/schedule-generated.php', { headers });
     const scheduleData = await response.json();
 
     const matches: ParsedMatch[] = [];
@@ -41,7 +41,7 @@ export default async function handler(
     for (const [dateKey, categories] of Object.entries(scheduleData)) {
       // Look for soccer/football categories
       const categoriesObj = categories as any;
-      const soccerCategory = categoriesObj['Soccer</span>'] || categoriesObj['Football</span>'];
+      const soccerCategory = categoriesObj['Soccer'] || categoriesObj['Football'];
 
       if (soccerCategory && Array.isArray(soccerCategory)) {
         for (const event of soccerCategory) {
