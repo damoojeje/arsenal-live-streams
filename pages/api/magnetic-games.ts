@@ -92,9 +92,19 @@ export default async function handler(
             }
           }
 
-          // Get channel information
-          const channelId = event.channels[0]?.channel_id || '1';
-          const channelName = event.channels[0]?.channel_name || 'Stream';
+          // Get all available channels for this match
+          const channels = Array.isArray(event.channels) ? event.channels : [];
+          const streamLinks = channels.map((channel: any) => ({
+            source: channel.channel_name || 'DaddyLive',
+            url: `https://dlhd.dad/stream/stream-${channel.channel_id}.php`,
+            channelId: channel.channel_id,
+            quality: 'HD'
+          }));
+
+          // Skip if no channels available
+          if (streamLinks.length === 0) {
+            continue;
+          }
 
           // Check if it's an Arsenal match
           const isArsenalMatch =
@@ -111,13 +121,7 @@ export default async function handler(
             links: [],
             source: 'daddylive',
             isArsenalMatch,
-            streamLinks: [
-              {
-                source: channelName,
-                url: channelId,
-                quality: 'HD'
-              }
-            ]
+            streamLinks
           });
         }
       }
