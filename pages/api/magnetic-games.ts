@@ -29,35 +29,50 @@ export default async function handler(
     const response = await fetch('https://magnetic.website/todays_games2.txt');
     const text = await response.text();
 
-    // Parse the text file
+    // Parse the text file - new format: Sport | \n Date Time \n Teams (Competition) | \n TV Coverage
     const lines = text.split('\n');
     const matches: ParsedMatch[] = [];
     const currentDate = new Date().toISOString();
 
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('***')) continue;
+    let currentSport = '';
+    let currentTime = '';
 
-      // Parse format: TIME | SPORT | EVENT | CHANNELS
-      const parts = trimmed.split('|').map(p => p.trim());
-      if (parts.length >= 3) {
-        const [timeStr, sport, event, channels] = parts;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
 
-        // Only process Football/Soccer matches
-        if (sport && (sport.toLowerCase().includes('football') || sport.toLowerCase().includes('soccer'))) {
-          // Parse team names from event
+      // Line 1: Sport name followed by |
+      if (line.endsWith('|')) {
+        currentSport = line.replace('|', '').trim();
+        continue;
+      }
+
+      // Line 2: Date and time
+      if (line.match(/^\d{2}\/\d{2}\s+\d{1,2}:\d{2}\s+(AM|PM)-/)) {
+        // Extract just the time portion (e.g., "03:00 PM")
+        const timeMatch = line.match(/(\d{1,2}:\d{2}\s+(?:AM|PM))/);
+        currentTime = timeMatch ? timeMatch[1] : 'TBD';
+        continue;
+      }
+
+      // Line 3: Event info (Teams and Competition)
+      if (line.includes('(') && line.includes(')') && currentSport.toLowerCase().includes('football')) {
+        // Extract teams and competition
+        const eventMatch = line.match(/^(.+?)\s*\((.+?)\)/);
+        if (eventMatch) {
+          const teamsStr = eventMatch[1].trim();
+          const competition = eventMatch[2].trim();
+
+          // Parse team names - look for " - " separator
           let homeTeam = '';
           let awayTeam = '';
-          const competition = sport;
 
-          // Try to extract teams from "Team A vs Team B" or "Team A @ Team B"
-          const vsMatch = event.match(/(.+?)\s+(?:vs\.?|@)\s+(.+)/i);
-          if (vsMatch) {
-            homeTeam = vsMatch[1].trim();
-            awayTeam = vsMatch[2].trim();
+          const teamMatch = teamsStr.match(/^(.+?)\s+-\s+(.+?)(?:\s+\(|$)/);
+          if (teamMatch) {
+            homeTeam = teamMatch[1].trim();
+            awayTeam = teamMatch[2].trim();
           } else {
-            // If we can't parse teams, use the event as homeTeam
-            homeTeam = event;
+            homeTeam = teamsStr;
             awayTeam = 'TBD';
           }
 
@@ -70,7 +85,7 @@ export default async function handler(
             id: `magnetic-${Date.now()}-${matches.length}`,
             homeTeam,
             awayTeam,
-            time: timeStr || 'TBD',
+            time: currentTime || 'TBD',
             date: currentDate,
             competition,
             links: [],
