@@ -160,14 +160,13 @@ const AdBlockedPlayer: React.FC<AdBlockedPlayerProps> = ({ streamUrl, channelId 
         onClickCapture={handleOverlayClick}
       />
 
-      {/* The Iframe with Sandbox Restrictions */}
+      {/* The Iframe - Sandbox removed for compatibility */}
       <iframe
         ref={iframeRef}
         src={streamUrl}
         className="absolute inset-0 w-full h-full border-0"
         allowFullScreen
         allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-        sandbox="allow-scripts allow-same-origin allow-presentation"
         referrerPolicy="no-referrer"
         title={`Stream Channel ${channelId}`}
         style={{ zIndex: 5 }}
