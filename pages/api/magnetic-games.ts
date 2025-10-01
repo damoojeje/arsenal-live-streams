@@ -39,12 +39,23 @@ export default async function handler(
 
     // Iterate through all dates in the schedule
     for (const [dateKey, categories] of Object.entries(scheduleData)) {
-      // Look for soccer/football categories
+      // Look for soccer/football categories (multiple possible names)
       const categoriesObj = categories as any;
-      const soccerCategory = categoriesObj['Soccer'] || categoriesObj['Football'];
+      const soccerCategories = [
+        categoriesObj['Soccer'],
+        categoriesObj['Football'],
+        categoriesObj['All Soccer Events'],
+        categoriesObj['England - Championship/EFL Trophy/League One']
+      ].filter(cat => cat && Array.isArray(cat));
 
-      if (soccerCategory && Array.isArray(soccerCategory)) {
+      // Process all soccer-related categories
+      for (const soccerCategory of soccerCategories) {
         for (const event of soccerCategory) {
+          // Skip Simulcast events (multi-game broadcasts)
+          if (event.event.includes('Simulcast')) {
+            continue;
+          }
+
           // Parse DaddyLive event format: "Country/Competition : Home Team vs Away Team"
           let homeTeam = '';
           let awayTeam = '';
@@ -57,9 +68,9 @@ export default async function handler(
             // First part is the competition/country
             competition = parts[0].trim();
 
-            // Second part contains "Home vs Away"
+            // Second part contains "Home vs Away" or "Home vs. Away"
             const matchPart = parts.slice(1).join(':').trim();
-            const vsMatch = matchPart.match(/^(.+?)\s+vs\s+(.+)$/i);
+            const vsMatch = matchPart.match(/^(.+?)\s+vs\.?\s+(.+)$/i);
 
             if (vsMatch) {
               homeTeam = vsMatch[1].trim();
@@ -70,14 +81,14 @@ export default async function handler(
               awayTeam = 'TBD';
             }
           } else {
-            // No colon separator, try to parse as "Team vs Team"
-            const vsMatch = event.event.match(/^(.+?)\s+vs\s+(.+)$/i);
+            // No colon separator, try to parse as "Team vs Team" or "Team vs. Team"
+            const vsMatch = event.event.match(/^(.+?)\s+vs\.?\s+(.+)$/i);
             if (vsMatch) {
               homeTeam = vsMatch[1].trim();
               awayTeam = vsMatch[2].trim();
             } else {
-              homeTeam = event.event;
-              awayTeam = 'TBD';
+              // Skip matches that can't be parsed
+              continue;
             }
           }
 
