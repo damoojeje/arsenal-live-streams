@@ -45,27 +45,45 @@ export default async function handler(
 
       if (soccerCategory && Array.isArray(soccerCategory)) {
         for (const event of soccerCategory) {
-          // Parse team names from event name
+          // Parse DaddyLive event format: "Country/Competition : Home Team vs Away Team"
           let homeTeam = '';
           let awayTeam = '';
           let competition = 'Live Match';
 
-          // Try to extract teams from "Team A vs Team B" format
-          const vsMatch = event.event.match(/^(.+?)\s+(?:vs\.?|v)\s+(.+?)(?:\s+\((.+?)\))?$/i);
-          if (vsMatch) {
-            homeTeam = vsMatch[1].trim();
-            awayTeam = vsMatch[2].trim();
-            if (vsMatch[3]) {
-              competition = vsMatch[3].trim();
+          // Split by colon to separate competition from match
+          const parts = event.event.split(':');
+
+          if (parts.length >= 2) {
+            // First part is the competition/country
+            competition = parts[0].trim();
+
+            // Second part contains "Home vs Away"
+            const matchPart = parts.slice(1).join(':').trim();
+            const vsMatch = matchPart.match(/^(.+?)\s+vs\s+(.+)$/i);
+
+            if (vsMatch) {
+              homeTeam = vsMatch[1].trim();
+              awayTeam = vsMatch[2].trim();
+            } else {
+              // Fallback: if no "vs" found, use the whole match part
+              homeTeam = matchPart;
+              awayTeam = 'TBD';
             }
           } else {
-            // If no vs pattern, use whole event name
-            homeTeam = event.event;
-            awayTeam = 'TBD';
+            // No colon separator, try to parse as "Team vs Team"
+            const vsMatch = event.event.match(/^(.+?)\s+vs\s+(.+)$/i);
+            if (vsMatch) {
+              homeTeam = vsMatch[1].trim();
+              awayTeam = vsMatch[2].trim();
+            } else {
+              homeTeam = event.event;
+              awayTeam = 'TBD';
+            }
           }
 
-          // Get channel ID for streaming
+          // Get channel information
           const channelId = event.channels[0]?.channel_id || '1';
+          const channelName = event.channels[0]?.channel_name || 'Stream';
 
           // Check if it's an Arsenal match
           const isArsenalMatch =
@@ -84,7 +102,7 @@ export default async function handler(
             isArsenalMatch,
             streamLinks: [
               {
-                source: 'DaddyLive',
+                source: channelName,
                 url: channelId,
                 quality: 'HD'
               }
