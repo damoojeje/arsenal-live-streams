@@ -4,14 +4,15 @@ import Head from 'next/head';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 
-// Dynamically import ad-blocked player (client-side only)
-const AdBlockedPlayer = dynamic(() => import('../../src/components/AdBlockedPlayer'), {
+// Dynamically import enhanced player with stream extraction (client-side only)
+const EnhancedPlayer = dynamic(() => import('../../src/components/EnhancedPlayer'), {
   ssr: false,
 });
 
 /**
- * Stream Player Page with Built-in Ad Blocking
- * Blocks popups, new tabs, and overlay ads
+ * Stream Player Page with Ad-Free Direct Playback
+ * Attempts to extract direct m3u8 URLs for ad-free streaming
+ * Falls back to iframe if extraction fails
  * Mobile-optimized viewing experience
  */
 
@@ -105,8 +106,7 @@ export default function PlayerPage() {
         style={{ height: 'calc(100vh - 60px)' }}
       >
         {channelId && (
-          <AdBlockedPlayer
-            streamUrl={iframeUrl}
+          <EnhancedPlayer
             channelId={channelId as string}
           />
         )}
