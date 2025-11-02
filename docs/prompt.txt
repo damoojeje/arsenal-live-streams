@@ -1,0 +1,149 @@
+export const prompt = `
+## Recommended Technology Stack
+
+**Framework**  
+Next.js (v14) with TypeScript • Built-in API routes (no separate server) • React components and SSR/ISR support • Ideal for Cursor AI’s file structure and incremental commits
+
+**HTTP & Parsing**  
+axios for requests  
+cheerio for HTML scraping
+
+**Styling**  
+TailwindCSS for atomic, responsive classes  
+Arsenal red (#DB0007), white, and dark gray accents
+
+**Testing**  
+Jest + React Testing Library for unit and integration tests  
+Supertest for API route tests
+
+**Logging & CI**  
+Winston (or simple file appends) for fetch.log  
+GitHub Actions: lint (ESLint), typecheck, test, build on every PR
+
+**Deployment**  
+Vercel for seamless Next.js deployments  
+Environment variables stored in Vercel secrets
+
+---
+
+## Data Sources Analysis & Integration Strategy
+
+### 3.1 Streamed.pk  
+- Official API:  
+  • Query /api/events?sport=football&date=YYYY-MM-DD • Returns JSON array of matches  
+- HTML fallback:  
+  • Scrape /category/football for <a href="/watch/..."> tags  
+  • Normalize names; prepend “https://streamed.pk” to hrefs  
+
+### 3.2 Sportsurge.bz  
+- Site uses client-side JS to load streams  
+- Use Puppeteer headless Chromium to render \`div.event\` blocks  
+- Or reverse-engineer XHR calls and mimic with axios  
+
+### 3.3 Buffstreamsapp.com  
+- This domain is informational, not an aggregator  
+- Skip; optionally investigate buffstreams.watch or buffstreams.app  
+
+### 3.4 Totalsportek007.com  
+- Scrape homepage for \`<a class="live-stream" data-match="...">\`  
+- On detail pages, parse up to the first three <a> links per match  
+
+---
+
+## Backend Architecture
+
+- src/data/streamed.ts  
+  export async function fetchStreamed(): Promise<Match[]>  
+
+- src/data/sportsurge.ts  
+  export async function fetchSportsurge(): Promise<Match[]>  
+
+- src/data/totalsportek.ts  
+  export async function fetchTotalSportek(): Promise<Match[]>  
+
+- src/data/filter.ts  
+  Load src/config/teams.json  
+  export function filterMatches(input: Match[]): Match[]  
+
+- pages/api/matches.ts  
+  \`\`\`ts
+  import { fetchStreamed } from "../../data/streamed";
+  import { fetchSportsurge } from "../../data/sportsurge";
+  import { fetchTotalSportek } from "../../data/totalsportek";
+  import { filterMatches } from "../../data/filter";
+
+  export default async function handler(req, res) {
+    const [s1, s2, s3] = await Promise.all([
+      fetchStreamed(),
+      fetchSportsurge(),
+      fetchTotalSportek(),
+    ]);
+    const merged = [...s1, ...s2, ...s3];
+    const filtered = filterMatches(merged);
+    res.setHeader("Cache-Control", "s-maxage=60, stale-while-revalidate=300");
+    return res.json(filtered);
+  }
+  \`\`\`
+
+**Test coverage**  
+- test/data/streamed.test.ts mocks axios, verifies parsing  
+- test/api/matches.test.ts ensures only desired clubs appear  
+
+---
+
+## Frontend Architecture & UI/UX
+
+- **src/pages/index.tsx**  
+  Fetch \`/api/matches\` (getServerSideProps or useSWR)  
+  Render \<Header title="Live Links for Top Clubs" /\>  
+  Render \<MatchList matches={data} /\>  
+
+- **Components**  
+  MatchList.tsx maps Match[] to MatchCard  
+  MatchCard.tsx shows logos, time, and link buttons  
+
+- **Styling**  
+  Tailwind config extends colors: { arsenalRed: '#DB0007' }  
+  Grid layout: \`grid-cols-1 md:grid-cols-2 lg:grid-cols-3\`  
+  Focus rings, accessible font sizes  
+
+- **Accessibility**  
+  aria-label="Watch Arsenal vs Chelsea live"  
+  Contrast ratio ≥ 4.5:1  
+
+---
+
+## CI/CD & Deployment
+
+**GitHub Actions Workflow**  
+\`\`\`yaml
+on: [push, pull_request]
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: pnpm/action-setup@v2
+        with: { version: 8 }
+      - run: pnpm install
+      - run: pnpm lint
+      - run: pnpm type
+      - run: pnpm test
+      - run: pnpm build
+\`\`\`
+
+**Vercel**  
+Connect repo, set Node version, add environment secrets, enable automatic deploys  
+
+---
+
+## Monitoring & Maintenance
+
+- **Error Tracking**: Sentry in \`_app.tsx\`  
+- **Logs**: Vercel console + \`src/logs/fetch.log\` artifacts  
+- **Alerts**: Notify on >20% 5xx API errors or failed tests  
+- **Future updates**:  
+  • Swap Puppeteer for official API if available  
+  • Update only src/data/* modules when domains change  
+  • teams.json remains central for adding new clubs  
+`

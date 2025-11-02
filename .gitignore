@@ -104,8 +104,8 @@ Thumbs.db
 # Vercel
 .vercel
 
-# Development documentation (kept locally, not in git)
-docs/
+# Development documentation (NOW TRACKED - v3.0 requirement)
+# docs/ <- REMOVED - we need to track documentation
 
 # Development artifacts
 debug-scrapers.js
