@@ -213,17 +213,38 @@
 
 ## ⏳ **Phase 4: Enhanced User Experience**
 
-### **Status**: ⏳ Pending
+### **Status**: 🔄 In Progress (Phase 4.1)
 
-### **Phase 4.1: Improved Player**
-- [ ] Add multi-quality selection
-- [ ] Add source switching UI
-- [ ] Implement auto-retry logic
-- [ ] Optimize mobile fullscreen
-- [ ] Test on iOS/Android
-- [ ] Test quality switching
+### **Phase 4.1: Improved Player** ✅ COMPLETE
+- [x] Add multi-quality selection (Auto, 1080p, 720p, 480p, 360p)
+- [x] Add source switching UI (multiple stream sources)
+- [x] Implement auto-retry logic (already existed, kept intact)
+- [x] Optimize mobile fullscreen (custom fullscreen toggle)
+- [x] Quality preference persistence (localStorage)
+- [x] Mobile device detection
+- [x] Build passing ✓
+- [x] Type checking passing ✓
+- [ ] Test on iOS/Android (production testing required)
+- [ ] Test quality switching (production testing required)
 
-**Git Commit Target**: `Phase 4.1 complete: Improved player`
+**Implementation Details**:
+- **Quality Selection**: Automatically detects available qualities from HLS manifest
+- **Quality Levels**: Auto (adaptive), 1080p, 720p, 480p, 360p based on stream capabilities
+- **Source Switching**: UI to switch between multiple stream sources if available
+- **Mobile Optimization**:
+  - Fullscreen toggle button for mobile devices
+  - Touch-friendly controls with proper sizing
+  - Landscape mode support via fullscreen API
+  - Safari compatibility (webkit prefixes)
+- **User Preferences**: Quality preference saved to localStorage and restored on load
+- **Seamless Switching**: Quality changes preserve playback position
+- **Enhanced UI**:
+  - Quality selector with current quality badge
+  - Source switcher with source count
+  - Semi-transparent control overlays
+  - Arsenal-themed styling (#DB0007)
+
+**Git Commit**: Pending
 
 ---
 
