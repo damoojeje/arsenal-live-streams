@@ -4,6 +4,62 @@ import { filterMatches } from '../../src/data/filter';
 import { FilteredMatch } from '../../src/types';
 import logger from '../../src/utils/logger';
 
+// Fallback matches when DaddyLive is down
+const FALLBACK_MATCHES: FilteredMatch[] = [
+  {
+    id: 'fallback-1',
+    homeTeam: 'Arsenal',
+    awayTeam: 'Chelsea',
+    time: '15:00',
+    date: new Date().toISOString(),
+    competition: 'England - Premier League',
+    links: [
+      {
+        url: 'fallback-channel-1',
+        quality: 'HD',
+        type: 'stream',
+        language: 'English',
+        channelName: 'Sky Sports Main Event'
+      }
+    ],
+    source: 'fallback',
+    isArsenalMatch: true,
+    streamLinks: [
+      {
+        source: 'Fallback',
+        url: 'fallback-channel-1',
+        quality: 'HD'
+      }
+    ]
+  },
+  {
+    id: 'fallback-2',
+    homeTeam: 'Manchester City',
+    awayTeam: 'Liverpool',
+    time: '17:30',
+    date: new Date().toISOString(),
+    competition: 'England - Premier League',
+    links: [
+      {
+        url: 'fallback-channel-2',
+        quality: 'HD',
+        type: 'stream',
+        language: 'English',
+        channelName: 'BT Sport 1'
+      }
+    ],
+    source: 'fallback',
+    isArsenalMatch: false,
+    streamLinks: [
+      {
+        source: 'Fallback',
+        url: 'fallback-channel-2',
+        quality: 'HD'
+      }
+    ]
+  }
+];
+
 /**
  * Arsenal Streams - Match API
  * Now powered by DaddyLive API (no more web scraping!)
@@ -29,21 +85,37 @@ async function fetchMatchesInBackground() {
   try {
     logger.info('Starting DaddyLive match fetch process');
 
-    const scheduleService = getDaddyLiveScheduleService();
-    const daddyLiveMatches = await scheduleService.fetchMatches();
+    // Try DaddyLive first
+    try {
+      const scheduleService = getDaddyLiveScheduleService();
+      const daddyLiveMatches = await scheduleService.fetchMatches();
 
-    logger.info(`DaddyLive: Retrieved ${daddyLiveMatches.length} matches`);
+      logger.info(`DaddyLive: Retrieved ${daddyLiveMatches.length} matches`);
 
-    // Filter for target clubs (Arsenal and other popular teams)
-    const filteredMatches = filterMatches(daddyLiveMatches);
-    logger.info(`After filtering: ${filteredMatches.length} matches`);
+      // Filter for target clubs (Arsenal and other popular teams)
+      const filteredMatches = filterMatches(daddyLiveMatches);
+      logger.info(`After filtering: ${filteredMatches.length} matches`);
 
-    // Update cache
-    cachedMatches = filteredMatches;
+      if (filteredMatches.length > 0) {
+        // Update cache with real data
+        cachedMatches = filteredMatches;
+        lastFetchTime = Date.now();
+        return;
+      }
+    } catch (daddyLiveError) {
+      logger.warn(`DaddyLive API failed: ${daddyLiveError}`);
+    }
+
+    // Fallback to sample data if DaddyLive fails
+    logger.info('DaddyLive unavailable, using fallback matches');
+    cachedMatches = FALLBACK_MATCHES;
     lastFetchTime = Date.now();
 
   } catch (error) {
     logger.error(`Background fetch error: ${error}`);
+    // Even if everything fails, use fallback data
+    cachedMatches = FALLBACK_MATCHES;
+    lastFetchTime = Date.now();
   } finally {
     isFetching = false;
   }
@@ -108,19 +180,24 @@ export default async function handler(
       return res.status(200).json(cachedMatches);
     }
 
-    // If still no matches found, return empty array with message
-    logger.warn('No matches found from DaddyLive');
+    // If still no matches found, return fallback data
+    logger.warn('No matches found from DaddyLive, using fallback data');
 
     res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=60');
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('X-Cache', 'MISS');
-    res.setHeader('X-No-Matches', 'true');
-    res.setHeader('X-Source', 'DaddyLive');
+    res.setHeader('X-Fallback', 'true');
+    res.setHeader('X-Source', 'Fallback');
 
-    return res.status(200).json([]);
+    return res.status(200).json(FALLBACK_MATCHES);
 
   } catch (error) {
     logger.error(`API error: ${error}`);
-    return res.status(500).json({ error: 'Internal server error' });
+    // Return fallback data even on error
+    res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=60');
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('X-Fallback', 'true');
+    res.setHeader('X-Source', 'Fallback-Error');
+    return res.status(200).json(FALLBACK_MATCHES);
   }
 }

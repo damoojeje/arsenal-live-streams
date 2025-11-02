@@ -41,29 +41,76 @@ export class DaddyLiveScheduleService {
     }
 
     try {
-      const url = await this.baseService.buildUrl('schedule/schedule-generated.php');
-      logger.info(`Fetching DaddyLive schedule from: ${url}`);
+      // Try to get the schedule from each repo
+      const repoUrls = [
+        'https://team-crew.github.io/',
+        'https://fubuz.github.io/',
+        'https://cmanbuilds.com/repo/'
+      ];
 
-      const client = this.baseService.getClient();
-      const response = await client.get<DaddyLiveSchedule>(url, {
-        headers: this.baseService.getHeaders()
-      });
+      for (const repoUrl of repoUrls) {
+        try {
+          // First try to get the addon.xml
+          const addonXmlUrl = `${repoUrl}repository.thecrew/addon.xml`;
+          const addonResponse = await client.get(addonXmlUrl);
 
-      if (response.status !== 200) {
-        throw new Error(`Schedule API returned status ${response.status}`);
+          if (addonResponse.status === 200) {
+            // Found working repo, now try to get the schedule
+            const scheduleUrl = `${repoUrl}schedule/schedule-generated.php`;
+            logger.info(`Found working repo, trying schedule URL: ${scheduleUrl}`);
+            const scheduleResponse = await client.get<DaddyLiveSchedule>(scheduleUrl, {
+              headers: this.baseService.getHeaders()
+            });
+
+            if (scheduleResponse.status === 200) {
+              const schedule = scheduleResponse.data;
+              const matches = this.parseSchedule(schedule);
+
+              // Cache the results
+              this.scheduleCache = {
+                data: matches,
+                timestamp: Date.now()
+              };
+
+              logger.info(`DaddyLive: Found ${matches.length} football matches`);
+              return matches;
+            }
+          }
+        } catch (repoError) {
+          logger.warn(`Failed to access repo ${repoUrl}: ${repoError}`);
+          continue; // Try next repo
+        }
       }
 
-      const schedule = response.data;
-      const matches = this.parseSchedule(schedule);
+      // If all repos fail, try the direct schedule URL
+      try {
+        const directUrl = 'https://daddylive.sx/schedule/schedule-generated.php';
+        logger.info(`Trying direct schedule URL: ${directUrl}`);
 
-      // Cache the results
-      this.scheduleCache = {
-        data: matches,
-        timestamp: Date.now()
-      };
+        const directResponse = await client.get<DaddyLiveSchedule>(directUrl, {
+          headers: this.baseService.getHeaders()
+        });
 
-      logger.info(`DaddyLive: Found ${matches.length} football matches`);
-      return matches;
+        if (directResponse.status === 200) {
+          const schedule = directResponse.data;
+          const matches = this.parseSchedule(schedule);
+
+          // Cache the results
+          this.scheduleCache = {
+            data: matches,
+            timestamp: Date.now()
+          };
+
+          logger.info(`DaddyLive: Found ${matches.length} football matches from direct URL`);
+          return matches;
+        }
+      } catch (directError) {
+        logger.error(`Failed to access direct schedule URL: ${directError}`);
+      }
+
+      // If everything fails, return empty array
+      logger.error('All schedule URLs failed');
+      return [];
 
     } catch (error) {
       logger.error(`Error fetching DaddyLive schedule: ${error}`);

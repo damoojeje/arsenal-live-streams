@@ -7,7 +7,14 @@ import logger from '../../utils/logger';
  * Based on plugin.video.daddylive v4.43 analysis
  */
 
-const SEED_URL = 'https://daddylive.sx/';
+// Official DaddyLive Kodi repo URLs
+const REPO_URLS = [
+  'https://team-crew.github.io/',  // Primary repo
+  'https://fubuz.github.io/',      // Alternative repo
+  'https://cmanbuilds.com/repo/'   // DaddyLive V2 repo
+];
+
+const SEED_URL = REPO_URLS[0]; // Start with primary repo
 
 const REQUIRED_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -45,26 +52,59 @@ export class DaddyLiveBaseService {
       return this.activeDomain;
     }
 
-    try {
-      logger.info(`Resolving active DaddyLive domain from seed: ${SEED_URL}`);
+    // Try each repo URL in order
+    for (const repoUrl of REPO_URLS) {
+      try {
+        logger.info(`Trying DaddyLive repo URL: ${repoUrl}`);
 
-      const response = await this.client.get(SEED_URL, {
+        // First check if the repo is accessible
+        const repoResponse = await this.client.get(repoUrl, {
+          maxRedirects: 5,
+          timeout: 5000 // Short timeout for quick fallback
+        });
+
+        if (repoResponse.status === 200) {
+          // Try to get the addon.xml from the repo
+          const addonXmlUrl = `${repoUrl}repository.thecrew/addon.xml`;
+          const addonResponse = await this.client.get(addonXmlUrl, {
+            maxRedirects: 5,
+            timeout: 5000
+          });
+
+          if (addonResponse.status === 200) {
+            logger.info(`Found working DaddyLive repo: ${repoUrl}`);
+            this.activeDomain = this.normalizeOrigin(repoUrl);
+            this.lastDomainCheck = now;
+            return this.activeDomain;
+          }
+        }
+      } catch (error) {
+        logger.warn(`Failed to access repo ${repoUrl}: ${error}`);
+        continue; // Try next repo
+      }
+    }
+
+    // If all repos fail, try the schedule URL directly
+    try {
+      const scheduleUrl = 'https://daddylive.sx/schedule/schedule-generated.php';
+      const response = await this.client.get(scheduleUrl, {
         maxRedirects: 5
       });
 
-      // Extract final URL after redirects
-      const finalUrl = response.request?.res?.responseUrl || response.config.url || SEED_URL;
-      this.activeDomain = this.normalizeOrigin(finalUrl);
-      this.lastDomainCheck = now;
-
-      logger.info(`Active DaddyLive domain resolved: ${this.activeDomain}`);
-
-      return this.activeDomain;
+      if (response.status === 200) {
+        const domain = this.normalizeOrigin(scheduleUrl);
+        logger.info(`Using direct schedule URL domain: ${domain}`);
+        this.activeDomain = domain;
+        this.lastDomainCheck = now;
+        return domain;
+      }
     } catch (error) {
-      logger.error(`Failed to resolve DaddyLive domain: ${error}`);
-      // Fallback to seed URL
-      return SEED_URL;
+      logger.error(`Failed to access direct schedule URL: ${error}`);
     }
+
+    // If everything fails, return the primary repo URL
+    logger.warn('All repo URLs failed, using primary repo URL');
+    return REPO_URLS[0];
   }
 
   /**
