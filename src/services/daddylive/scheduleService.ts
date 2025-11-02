@@ -50,6 +50,9 @@ export class DaddyLiveScheduleService {
 
       for (const repoUrl of repoUrls) {
         try {
+          // Get HTTP client from base service
+          const client = this.baseService.getClient();
+
           // First try to get the addon.xml
           const addonXmlUrl = `${repoUrl}repository.thecrew/addon.xml`;
           const addonResponse = await client.get(addonXmlUrl);
@@ -84,6 +87,7 @@ export class DaddyLiveScheduleService {
 
       // If all repos fail, try the direct schedule URL
       try {
+        const client = this.baseService.getClient();
         const directUrl = 'https://daddylive.sx/schedule/schedule-generated.php';
         logger.info(`Trying direct schedule URL: ${directUrl}`);
 
