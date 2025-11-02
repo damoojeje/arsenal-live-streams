@@ -248,14 +248,39 @@
 
 ---
 
-### **Phase 4.2: Match Enrichment**
-- [ ] Integrate team logo API
-- [ ] Create competition badges
-- [ ] Implement favorites feature
-- [ ] Add browser notifications (optional)
-- [ ] Test all features
+### **Phase 4.2: Match Enrichment** ✅ COMPLETE
+- [x] Integrate team logo service (50+ teams with fallback initials)
+- [x] Display team logos/crests on match cards
+- [x] Create favorites system with localStorage persistence
+- [x] Add favorite toggle buttons for each team
+- [x] Implement "Favorites Only" filter on dashboard
+- [x] Competition badges (already existed - enhanced)
+- [x] Build passing ✓
+- [x] Type checking passing ✓
+- [ ] Browser notifications (skipped - optional feature)
+- [ ] Test all features (production testing required)
 
-**Git Commit Target**: `Phase 4.2 complete: Match enrichment`
+**Implementation Details**:
+- **Team Logos**:
+  - 50+ team logos mapped (Premier League + major European teams)
+  - Free CDN sources (premierleague.com + Wikipedia)
+  - Team name normalization handles variations (e.g., "Man City" → "Manchester City")
+  - Graceful fallback to colored initials (e.g., "ARS" for Arsenal)
+  - Error handling with automatic fallback display
+- **Favorites System**:
+  - localStorage persistence (`lolli_favorite_teams` key)
+  - Per-team favorite tracking
+  - Favorites count badge on filter button
+  - Real-time favorite status updates
+  - Match filtering by favorite teams
+- **UI Enhancements**:
+  - Team logos (64x64) with initials fallback
+  - Star icon toggle (yellow when favorited, gray when not)
+  - Favorites filter button with count badge
+  - Toggle between "Show All" and "Favorites Only"
+  - Responsive layout for mobile and desktop
+
+**Git Commit**: Pending
 
 ---
 

@@ -6,9 +6,10 @@ interface MatchListProps {
   matches: FilteredMatch[];
   loading?: boolean;
   error?: string;
+  onFavoriteChange?: () => void;
 }
 
-const MatchList: React.FC<MatchListProps> = ({ matches, loading, error }) => {
+const MatchList: React.FC<MatchListProps> = ({ matches, loading, error, onFavoriteChange }) => {
   if (loading) {
     return (
       <div className="space-y-6">
@@ -128,7 +129,7 @@ const MatchList: React.FC<MatchListProps> = ({ matches, loading, error }) => {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {matches.map((match) => (
-        <MatchCard key={match.id} match={match} />
+        <MatchCard key={match.id} match={match} onFavoriteChange={onFavoriteChange} />
       ))}
     </div>
   );

@@ -1,13 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FilteredMatch } from '../types';
 import { calculateQualityScore } from '../utils/linkQuality';
+import { getTeamLogo, getTeamInitials } from '../services/teamLogos';
+import { toggleFavoriteTeam, isFavoriteTeam } from '../services/favorites';
 
 interface MatchCardProps {
   match: FilteredMatch;
+  onFavoriteChange?: () => void;
 }
 
-const MatchCard: React.FC<MatchCardProps> = ({ match }) => {
+const MatchCard: React.FC<MatchCardProps> = ({ match, onFavoriteChange }) => {
   const [showAllLinks, setShowAllLinks] = useState(false);
+  const [homeTeamFavorite, setHomeTeamFavorite] = useState(false);
+  const [awayTeamFavorite, setAwayTeamFavorite] = useState(false);
+
+  // Check favorite status on mount and when match changes
+  useEffect(() => {
+    setHomeTeamFavorite(isFavoriteTeam(match.homeTeam));
+    setAwayTeamFavorite(isFavoriteTeam(match.awayTeam));
+  }, [match.homeTeam, match.awayTeam]);
+
+  // Toggle favorite for a team
+  const handleToggleFavorite = (teamName: string, isHome: boolean) => {
+    const newStatus = toggleFavoriteTeam(teamName);
+    if (isHome) {
+      setHomeTeamFavorite(newStatus);
+    } else {
+      setAwayTeamFavorite(newStatus);
+    }
+    onFavoriteChange?.();
+  };
 
   const formatTime = (time: string, date?: string) => {
     if (time === 'TBD' || !time) return 'TBD';
@@ -140,23 +162,118 @@ const MatchCard: React.FC<MatchCardProps> = ({ match }) => {
       {/* Teams */}
       <div className="px-6 py-6">
         <div className="flex items-center justify-between">
+          {/* Home Team */}
           <div className="text-center flex-1">
-            <div className="text-lg font-semibold text-gray-900 mb-1">
-              {match.homeTeam}
+            <div className="flex flex-col items-center space-y-2">
+              {/* Team Logo or Initials */}
+              {getTeamLogo(match.homeTeam) ? (
+                <img
+                  src={getTeamLogo(match.homeTeam)!}
+                  alt={`${match.homeTeam} logo`}
+                  className="w-16 h-16 object-contain"
+                  onError={(e) => {
+                    // Fallback to initials if image fails to load
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                    const fallback = target.nextElementSibling as HTMLElement;
+                    if (fallback) fallback.style.display = 'flex';
+                  }}
+                />
+              ) : null}
+              <div
+                className={`w-16 h-16 rounded-full bg-gradient-to-br from-arsenalRed to-red-600 flex items-center justify-center ${
+                  getTeamLogo(match.homeTeam) ? 'hidden' : 'flex'
+                }`}
+                style={{ display: getTeamLogo(match.homeTeam) ? 'none' : 'flex' }}
+              >
+                <span className="text-white font-bold text-xl">
+                  {getTeamInitials(match.homeTeam)}
+                </span>
+              </div>
+
+              {/* Team Name with Favorite Button */}
+              <div className="flex items-center gap-2">
+                <div className="text-lg font-semibold text-gray-900">
+                  {match.homeTeam}
+                </div>
+                <button
+                  onClick={() => handleToggleFavorite(match.homeTeam, true)}
+                  className="focus:outline-none transition-transform hover:scale-110"
+                  aria-label={homeTeamFavorite ? `Remove ${match.homeTeam} from favorites` : `Add ${match.homeTeam} to favorites`}
+                >
+                  {homeTeamFavorite ? (
+                    <svg className="w-6 h-6 text-yellow-500 fill-current" viewBox="0 0 20 20">
+                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-6 h-6 text-gray-400 hover:text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+              <div className="text-sm text-gray-500">Home</div>
             </div>
-            <div className="text-sm text-gray-500">Home</div>
           </div>
-          
+
+          {/* VS Divider */}
           <div className="mx-4 text-center">
             <div className="text-2xl font-bold text-arsenalRed">VS</div>
             <div className="text-xs text-gray-500 mt-1">vs</div>
           </div>
-          
+
+          {/* Away Team */}
           <div className="text-center flex-1">
-            <div className="text-lg font-semibold text-gray-900 mb-1">
-              {match.awayTeam}
+            <div className="flex flex-col items-center space-y-2">
+              {/* Team Logo or Initials */}
+              {getTeamLogo(match.awayTeam) ? (
+                <img
+                  src={getTeamLogo(match.awayTeam)!}
+                  alt={`${match.awayTeam} logo`}
+                  className="w-16 h-16 object-contain"
+                  onError={(e) => {
+                    // Fallback to initials if image fails to load
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                    const fallback = target.nextElementSibling as HTMLElement;
+                    if (fallback) fallback.style.display = 'flex';
+                  }}
+                />
+              ) : null}
+              <div
+                className={`w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center ${
+                  getTeamLogo(match.awayTeam) ? 'hidden' : 'flex'
+                }`}
+                style={{ display: getTeamLogo(match.awayTeam) ? 'none' : 'flex' }}
+              >
+                <span className="text-white font-bold text-xl">
+                  {getTeamInitials(match.awayTeam)}
+                </span>
+              </div>
+
+              {/* Team Name with Favorite Button */}
+              <div className="flex items-center gap-2">
+                <div className="text-lg font-semibold text-gray-900">
+                  {match.awayTeam}
+                </div>
+                <button
+                  onClick={() => handleToggleFavorite(match.awayTeam, false)}
+                  className="focus:outline-none transition-transform hover:scale-110"
+                  aria-label={awayTeamFavorite ? `Remove ${match.awayTeam} from favorites` : `Add ${match.awayTeam} to favorites`}
+                >
+                  {awayTeamFavorite ? (
+                    <svg className="w-6 h-6 text-yellow-500 fill-current" viewBox="0 0 20 20">
+                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-6 h-6 text-gray-400 hover:text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+              <div className="text-sm text-gray-500">Away</div>
             </div>
-            <div className="text-sm text-gray-500">Away</div>
           </div>
         </div>
       </div>

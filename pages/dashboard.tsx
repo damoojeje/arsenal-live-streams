@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import Header from '../src/components/Header';
 import MatchList from '../src/components/MatchList';
 import { FilteredMatch } from '../src/types';
+import { isMatchFavorited, getFavoritesCount } from '../src/services/favorites';
 
 interface HomePageProps {
   initialMatches?: FilteredMatch[];
@@ -19,7 +20,14 @@ const HomePage: React.FC<HomePageProps> = ({ initialMatches = [] }) => {
   const [selectedTeam, setSelectedTeam] = useState<string>('All Clubs');
   const [selectedCompetition, setSelectedCompetition] = useState<string>('All Competitions');
   const [selectedCountry, setSelectedCountry] = useState<string>('All Countries');
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [favoritesCount, setFavoritesCount] = useState(0);
   const [hasPassedLanding, setHasPassedLanding] = useState(false);
+
+  // Update favorites count
+  useEffect(() => {
+    setFavoritesCount(getFavoritesCount());
+  }, [matches]);
 
   const fetchMatches = async () => {
     setLoading(true);
@@ -42,9 +50,16 @@ const HomePage: React.FC<HomePageProps> = ({ initialMatches = [] }) => {
     }
   };
 
-  // Filter and sort matches based on selected team, competition, and country
+  // Filter and sort matches based on selected team, competition, country, and favorites
   useEffect(() => {
     let filtered = matches;
+
+    // Filter by favorites
+    if (showFavoritesOnly) {
+      filtered = filtered.filter(match =>
+        isMatchFavorited(match.homeTeam, match.awayTeam)
+      );
+    }
 
     // Filter by team
     if (selectedTeam !== 'All Clubs') {
@@ -120,7 +135,7 @@ const HomePage: React.FC<HomePageProps> = ({ initialMatches = [] }) => {
     });
 
     setFilteredMatches(filtered);
-  }, [selectedTeam, selectedCompetition, selectedCountry, matches]);
+  }, [selectedTeam, selectedCompetition, selectedCountry, showFavoritesOnly, matches]);
 
   // Check if user has passed landing page verification (client-side only)
   useEffect(() => {
@@ -233,6 +248,32 @@ const HomePage: React.FC<HomePageProps> = ({ initialMatches = [] }) => {
                     ⏰ Last updated: {lastUpdated.toLocaleTimeString()}
                   </div>
                 )}
+
+                {/* Favorites Filter Button */}
+                <button
+                  onClick={() => {
+                    setShowFavoritesOnly(!showFavoritesOnly);
+                    setFavoritesCount(getFavoritesCount());
+                  }}
+                  className={`relative px-6 py-3 rounded-lg font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 shadow-sm hover:shadow-md ${
+                    showFavoritesOnly
+                      ? 'bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-gray-900 focus:ring-yellow-400'
+                      : 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 focus:ring-gray-400'
+                  }`}
+                >
+                  <span className="flex items-center">
+                    <svg className={`w-5 h-5 mr-2 ${showFavoritesOnly ? 'text-gray-900 fill-current' : 'text-gray-400'}`} viewBox="0 0 20 20">
+                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                    </svg>
+                    {showFavoritesOnly ? 'Show All' : 'Favorites Only'}
+                    {favoritesCount > 0 && !showFavoritesOnly && (
+                      <span className="ml-2 bg-arsenalRed text-white text-xs px-2 py-0.5 rounded-full">
+                        {favoritesCount}
+                      </span>
+                    )}
+                  </span>
+                </button>
+
                 <button
                   onClick={fetchMatches}
                   disabled={loading}
@@ -259,6 +300,7 @@ const HomePage: React.FC<HomePageProps> = ({ initialMatches = [] }) => {
             matches={filteredMatches}
             loading={loading}
             error={error || undefined}
+            onFavoriteChange={() => setFavoritesCount(getFavoritesCount())}
           />
 
           {/* Footer */}
