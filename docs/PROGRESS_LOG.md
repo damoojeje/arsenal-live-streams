@@ -152,16 +152,26 @@
 
 ### **Status**: ⏳ Pending
 
-### **Phase 3.1: TotalSportek7 Integration**
-- [ ] Create service module structure
-- [ ] Implement match listing scraper
-- [ ] Implement stream resolver
-- [ ] Create API endpoints
-- [ ] Test match extraction
-- [ ] Test stream extraction
-- [ ] Handle anti-bot protection
+### **Phase 3.1: TotalSportek7 Integration** ✅ COMPLETE
+- [x] Create service module structure (baseService + scheduleService)
+- [x] Implement match listing scraper (Cheerio HTML parsing)
+- [x] Implement relative time parsing (Starts in Xhr:Ymin)
+- [x] Create API endpoint `/api/totalsportek/matches`
+- [x] Handle anti-bot protection (rotating user agents)
+- [x] Build passing ✓
+- [ ] Test match extraction (production testing)
+- [ ] Test stream extraction (production testing - Phase 4)
 
-**Git Commit Target**: `Phase 3.1 complete: TotalSportek7 integration`
+**Implementation**:
+- Base service with rotating user agents (3 agents)
+- Schedule service scrapes /soccerstreams page
+- Parses league-grouped matches with Cheerio
+- Converts relative time ("12hr:16min") to absolute time
+- 3-minute caching (longer than DaddyLive due to scraping cost)
+- Validates league names before parsing
+- Match page URLs stored in links array
+
+**Git Commit**: Pending
 
 ---
 
