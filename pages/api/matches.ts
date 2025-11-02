@@ -1,6 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { getDaddyLiveScheduleService } from '../../src/services/daddylive/scheduleService';
-import { filterMatches } from '../../src/data/filter';
+import { getSourceManager } from '../../src/services/sourceManager';
 import { FilteredMatch } from '../../src/types';
 import logger from '../../src/utils/logger';
 
@@ -83,27 +82,19 @@ async function fetchMatchesInBackground() {
   isFetching = true;
 
   try {
-    logger.info('Starting DaddyLive match fetch process');
+    logger.info('Starting multi-source match fetch process');
 
-    // Try DaddyLive first
-    try {
-      const scheduleService = getDaddyLiveScheduleService();
-      const daddyLiveMatches = await scheduleService.fetchMatches();
+    // Use unified source manager with intelligent failover
+    const sourceManager = getSourceManager();
+    const result = await sourceManager.fetchMatches();
 
-      logger.info(`DaddyLive: Retrieved ${daddyLiveMatches.length} matches`);
+    logger.info(`Source Manager: ${result.matches.length} matches from ${result.source}`);
 
-      // Filter for target clubs (Arsenal and other popular teams)
-      const filteredMatches = filterMatches(daddyLiveMatches);
-      logger.info(`After filtering: ${filteredMatches.length} matches`);
-
-      if (filteredMatches.length > 0) {
-        // Update cache with real data
-        cachedMatches = filteredMatches;
-        lastFetchTime = Date.now();
-        return;
-      }
-    } catch (daddyLiveError) {
-      logger.warn(`DaddyLive API failed: ${daddyLiveError}`);
+    if (result.matches.length > 0) {
+      // Update cache with data from whichever source succeeded
+      cachedMatches = result.matches;
+      lastFetchTime = Date.now();
+      return;
     }
 
     // Fallback to sample data if DaddyLive fails
