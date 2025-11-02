@@ -29,6 +29,9 @@ const EnhancedPlayer: React.FC<EnhancedPlayerProps> = ({ channelId }) => {
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [blockedPopups, setBlockedPopups] = useState(0);
+  const [retryCount, setRetryCount] = useState(0);
+  const maxRetries = 3;
 
   // Attempt to extract stream URL
   useEffect(() => {
@@ -158,6 +161,43 @@ const EnhancedPlayer: React.FC<EnhancedPlayerProps> = ({ channelId }) => {
 
   const iframeUrl = `https://dlhd.dad/stream/stream-${channelId}.php`;
 
+  // Popup blocker for iframe fallback mode
+  useEffect(() => {
+    if (playerMode !== 'iframe') return;
+
+    let popupCount = 0;
+    const originalWindowOpen = window.open;
+
+    // Block window.open popups
+    window.open = function(...args) {
+      popupCount++;
+      setBlockedPopups(popupCount);
+      console.log('🛡️ Blocked popup attempt:', args[0]);
+      return null;
+    };
+
+    return () => {
+      window.open = originalWindowOpen;
+    };
+  }, [playerMode]);
+
+  // Retry mechanism for HLS failures
+  const retryExtraction = async () => {
+    if (retryCount >= maxRetries) {
+      console.log(`Max retries (${maxRetries}) reached, staying in iframe mode`);
+      return;
+    }
+
+    console.log(`Retry attempt ${retryCount + 1}/${maxRetries}...`);
+    setRetryCount(prev => prev + 1);
+    setPlayerMode('loading');
+
+    // Trigger re-extraction by changing state
+    setTimeout(() => {
+      window.location.reload(); // Simple reload for now
+    }, 2000);
+  };
+
   return (
     <div className="relative w-full h-full bg-black">
       {/* Loading State */}
@@ -188,9 +228,27 @@ const EnhancedPlayer: React.FC<EnhancedPlayerProps> = ({ channelId }) => {
           <p className="text-xs opacity-90">
             {error || 'Could not extract direct stream'}
           </p>
-          <p className="text-xs mt-1 opacity-75">
+          <p className="text-xs mt-2 opacity-75">
             💡 Tip: Use an ad blocker for best experience
           </p>
+          {retryCount < maxRetries && (
+            <button
+              onClick={retryExtraction}
+              className="mt-2 text-xs bg-white bg-opacity-20 hover:bg-opacity-30 px-3 py-1 rounded transition-colors"
+            >
+              Retry Ad-Free ({maxRetries - retryCount} left)
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Blocked Popups Counter */}
+      {blockedPopups > 0 && playerMode === 'iframe' && (
+        <div className="absolute top-20 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-30 flex items-center space-x-2 animate-fade-in">
+          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+          </svg>
+          <span className="font-semibold text-sm">{blockedPopups} popup{blockedPopups > 1 ? 's' : ''} blocked</span>
         </div>
       )}
 
@@ -206,14 +264,16 @@ const EnhancedPlayer: React.FC<EnhancedPlayerProps> = ({ channelId }) => {
         />
       )}
 
-      {/* Iframe Fallback (With Ads) */}
+      {/* Iframe Fallback (With Ads - But Protected) */}
       {playerMode === 'iframe' && (
         <iframe
           ref={iframeRef}
           src={iframeUrl}
           className="w-full h-full border-0"
           allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+          sandbox="allow-scripts allow-same-origin allow-presentation"
           allowFullScreen
+          referrerPolicy="no-referrer"
           title={`Stream Channel ${channelId}`}
         />
       )}
