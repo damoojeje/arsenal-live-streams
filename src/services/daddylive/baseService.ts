@@ -3,18 +3,12 @@ import logger from '../../utils/logger';
 
 /**
  * DaddyLive Base Service
- * Handles domain resolution and HTTP client configuration
- * Based on plugin.video.daddylive v4.43 analysis
+ * Handles HTTP client configuration for dlhd.dad
+ * Updated Nov 2025 - Using actual DaddyLive website
  */
 
-// Official DaddyLive Kodi repo URLs
-const REPO_URLS = [
-  'https://team-crew.github.io/',  // Primary repo
-  'https://fubuz.github.io/',      // Alternative repo
-  'https://cmanbuilds.com/repo/'   // DaddyLive V2 repo
-];
-
-const SEED_URL = REPO_URLS[0]; // Start with primary repo
+// Current active DaddyLive domain (daddylivestream.com redirects here)
+const DADDYLIVE_DOMAIN = 'https://dlhd.dad/';
 
 const REQUIRED_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -27,9 +21,7 @@ const REQUIRED_HEADERS = {
 
 export class DaddyLiveBaseService {
   private client: AxiosInstance;
-  private activeDomain: string = SEED_URL;
-  private lastDomainCheck: number = 0;
-  private domainCheckInterval: number = 3600000; // 1 hour
+  private activeDomain: string = DADDYLIVE_DOMAIN;
 
   constructor() {
     this.client = axios.create({
@@ -38,85 +30,6 @@ export class DaddyLiveBaseService {
       headers: REQUIRED_HEADERS,
       validateStatus: (status) => status >= 200 && status < 500
     });
-  }
-
-  /**
-   * Resolve active DaddyLive domain
-   * Follows redirects to discover current active domain
-   */
-  async resolveActiveDomain(): Promise<string> {
-    const now = Date.now();
-
-    // Return cached domain if checked recently
-    if (this.activeDomain && (now - this.lastDomainCheck) < this.domainCheckInterval) {
-      return this.activeDomain;
-    }
-
-    // Try each repo URL in order
-    for (const repoUrl of REPO_URLS) {
-      try {
-        logger.info(`Trying DaddyLive repo URL: ${repoUrl}`);
-
-        // First check if the repo is accessible
-        const repoResponse = await this.client.get(repoUrl, {
-          maxRedirects: 5,
-          timeout: 5000 // Short timeout for quick fallback
-        });
-
-        if (repoResponse.status === 200) {
-          // Try to get the addon.xml from the repo
-          const addonXmlUrl = `${repoUrl}repository.thecrew/addon.xml`;
-          const addonResponse = await this.client.get(addonXmlUrl, {
-            maxRedirects: 5,
-            timeout: 5000
-          });
-
-          if (addonResponse.status === 200) {
-            logger.info(`Found working DaddyLive repo: ${repoUrl}`);
-            this.activeDomain = this.normalizeOrigin(repoUrl);
-            this.lastDomainCheck = now;
-            return this.activeDomain;
-          }
-        }
-      } catch (error) {
-        logger.warn(`Failed to access repo ${repoUrl}: ${error}`);
-        continue; // Try next repo
-      }
-    }
-
-    // If all repos fail, try the schedule URL directly
-    try {
-      const scheduleUrl = 'https://daddylive.sx/schedule/schedule-generated.php';
-      const response = await this.client.get(scheduleUrl, {
-        maxRedirects: 5
-      });
-
-      if (response.status === 200) {
-        const domain = this.normalizeOrigin(scheduleUrl);
-        logger.info(`Using direct schedule URL domain: ${domain}`);
-        this.activeDomain = domain;
-        this.lastDomainCheck = now;
-        return domain;
-      }
-    } catch (error) {
-      logger.error(`Failed to access direct schedule URL: ${error}`);
-    }
-
-    // If everything fails, return the primary repo URL
-    logger.warn('All repo URLs failed, using primary repo URL');
-    return REPO_URLS[0];
-  }
-
-  /**
-   * Normalize URL to origin (protocol + domain)
-   */
-  private normalizeOrigin(url: string): string {
-    try {
-      const parsed = new URL(url);
-      return `${parsed.protocol}//${parsed.host}/`;
-    } catch {
-      return url.endsWith('/') ? url : `${url}/`;
-    }
   }
 
   /**
@@ -129,10 +42,9 @@ export class DaddyLiveBaseService {
   /**
    * Build full URL from path
    */
-  async buildUrl(path: string): Promise<string> {
-    const domain = await this.resolveActiveDomain();
+  buildUrl(path: string): string {
     const cleanPath = path.startsWith('/') ? path.slice(1) : path;
-    return `${domain}${cleanPath}`;
+    return `${DADDYLIVE_DOMAIN}${cleanPath}`;
   }
 
   /**

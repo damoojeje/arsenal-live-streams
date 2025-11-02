@@ -4,26 +4,9 @@ import logger from '../../utils/logger';
 
 /**
  * DaddyLive Schedule Service
- * Fetches match schedule from DaddyLive API
- * Based on plugin.video.daddylive v4.43 analysis
+ * Scrapes match schedule from dlhd.dad website
+ * Updated to use actual DaddyLive website structure (Nov 2025)
  */
-
-interface DaddyLiveChannel {
-  channel_name: string;
-  channel_id: string;
-}
-
-interface DaddyLiveEvent {
-  event: string;           // "Arsenal vs Chelsea"
-  time: string;            // "15:00" UTC
-  channels: DaddyLiveChannel[];
-}
-
-interface DaddyLiveSchedule {
-  [date: string]: {
-    [category: string]: DaddyLiveEvent[];
-  };
-}
 
 export class DaddyLiveScheduleService {
   private baseService = getDaddyLiveBaseService();
@@ -41,80 +24,100 @@ export class DaddyLiveScheduleService {
     }
 
     try {
-      // Try to get the schedule from each repo
-      const repoUrls = [
-        'https://team-crew.github.io/',
-        'https://fubuz.github.io/',
-        'https://cmanbuilds.com/repo/'
-      ];
+      // Scrape the actual DaddyLive website
+      const cheerio = require('cheerio');
+      const client = this.baseService.getClient();
+      const scheduleUrl = 'https://dlhd.dad/index.php?cat=Soccer';
 
-      for (const repoUrl of repoUrls) {
-        try {
-          // Get HTTP client from base service
-          const client = this.baseService.getClient();
+      logger.info(`Fetching schedule from: ${scheduleUrl}`);
 
-          // First try to get the addon.xml
-          const addonXmlUrl = `${repoUrl}repository.thecrew/addon.xml`;
-          const addonResponse = await client.get(addonXmlUrl);
-
-          if (addonResponse.status === 200) {
-            // Found working repo, now try to get the schedule
-            const scheduleUrl = `${repoUrl}schedule/schedule-generated.php`;
-            logger.info(`Found working repo, trying schedule URL: ${scheduleUrl}`);
-            const scheduleResponse = await client.get<DaddyLiveSchedule>(scheduleUrl, {
-              headers: this.baseService.getHeaders()
-            });
-
-            if (scheduleResponse.status === 200) {
-              const schedule = scheduleResponse.data;
-              const matches = this.parseSchedule(schedule);
-
-              // Cache the results
-              this.scheduleCache = {
-                data: matches,
-                timestamp: Date.now()
-              };
-
-              logger.info(`DaddyLive: Found ${matches.length} football matches`);
-              return matches;
-            }
-          }
-        } catch (repoError) {
-          logger.warn(`Failed to access repo ${repoUrl}: ${repoError}`);
-          continue; // Try next repo
+      const response = await client.get(scheduleUrl, {
+        headers: {
+          ...this.baseService.getHeaders(),
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5'
         }
+      });
+
+      if (response.status !== 200) {
+        logger.error(`Failed to fetch schedule: HTTP ${response.status}`);
+        return [];
       }
 
-      // If all repos fail, try the direct schedule URL
-      try {
-        const client = this.baseService.getClient();
-        const directUrl = 'https://daddylive.sx/schedule/schedule-generated.php';
-        logger.info(`Trying direct schedule URL: ${directUrl}`);
+      const $ = cheerio.load(response.data);
+      const matches: Match[] = [];
 
-        const directResponse = await client.get<DaddyLiveSchedule>(directUrl, {
-          headers: this.baseService.getHeaders()
-        });
+      // Parse schedule events
+      $('.schedule__event').each((_: number, element: any) => {
+        try {
+          const $event = $(element);
 
-        if (directResponse.status === 200) {
-          const schedule = directResponse.data;
-          const matches = this.parseSchedule(schedule);
+          // Extract time
+          const timeStr = $event.find('.schedule__time').attr('data-time') || '';
 
-          // Cache the results
-          this.scheduleCache = {
-            data: matches,
-            timestamp: Date.now()
+          // Extract event title (League : Team A vs Team B)
+          const eventTitle = $event.find('.schedule__eventTitle').text().trim();
+
+          // Extract channels
+          const channels: any[] = [];
+          $event.find('.schedule__channels a').each((__: number, linkElement: any) => {
+            const $link = $(linkElement);
+            const href = $link.attr('href') || '';
+            const channelName = $link.attr('title') || $link.text().trim();
+            const channelId = href.match(/id=(\d+)/)?.[1];
+
+            if (channelId) {
+              channels.push({
+                channel_id: channelId,
+                channel_name: channelName
+              });
+            }
+          });
+
+          if (!eventTitle || channels.length === 0) {
+            return; // Skip events without title or channels
+          }
+
+          // Parse event title to extract competition and teams
+          const { competition, homeTeam, awayTeam } = this.parseEventTitle(eventTitle);
+
+          if (!homeTeam || !awayTeam) {
+            logger.warn(`Could not parse teams from: ${eventTitle}`);
+            return;
+          }
+
+          // Create match object
+          const match: Match = {
+            id: `daddylive-${this.sanitize(eventTitle)}-${timeStr}`,
+            homeTeam,
+            awayTeam,
+            time: timeStr || 'TBD',
+            date: new Date().toISOString(),
+            competition: competition || 'Football',
+            links: channels.map(channel => ({
+              url: channel.channel_id,
+              quality: 'HD',
+              type: 'stream' as const,
+              language: 'English',
+              channelName: channel.channel_name
+            })),
+            source: 'daddylive'
           };
 
-          logger.info(`DaddyLive: Found ${matches.length} football matches from direct URL`);
-          return matches;
+          matches.push(match);
+        } catch (error) {
+          logger.warn(`Error parsing event: ${error}`);
         }
-      } catch (directError) {
-        logger.error(`Failed to access direct schedule URL: ${directError}`);
-      }
+      });
 
-      // If everything fails, return empty array
-      logger.error('All schedule URLs failed');
-      return [];
+      // Cache the results
+      this.scheduleCache = {
+        data: matches,
+        timestamp: Date.now()
+      };
+
+      logger.info(`DaddyLive: Found ${matches.length} football matches`);
+      return matches;
 
     } catch (error) {
       logger.error(`Error fetching DaddyLive schedule: ${error}`);
@@ -123,132 +126,30 @@ export class DaddyLiveScheduleService {
   }
 
   /**
-   * Parse schedule data into Match objects
+   * Parse event title to extract competition and teams
+   * Format: "League : Team A vs Team B" or "League - Sublease : Team A vs Team B"
    */
-  private parseSchedule(schedule: DaddyLiveSchedule): Match[] {
-    const matches: Match[] = [];
-
-    // Iterate through all date keys in the schedule
-    for (const dateKey of Object.keys(schedule)) {
-      const daySchedule = schedule[dateKey];
-
-      // Soccer/Football categories to check
-      const soccerCategories = [
-        'All Soccer Events',
-        'England - Championship/EFL Trophy/League One',
-        'England - Premier League',
-        'Spain - La Liga',
-        'Italy - Serie A',
-        'Germany - Bundesliga',
-        'France - Ligue 1',
-        'UEFA Champions League',
-        'UEFA Europa League',
-        'FIFA World Cup Qualifiers'
-      ];
-
-      // Check all potential soccer categories
-      for (const category of soccerCategories) {
-        const events = daySchedule[category];
-        if (!events || !Array.isArray(events)) continue;
-
-        for (const event of events) {
-          try {
-            const match = this.parseEvent(event, dateKey);
-            if (match) {
-              matches.push(match);
-            }
-          } catch (error) {
-            logger.warn(`Failed to parse event: ${error}`);
-          }
-        }
-      }
-
-      // Also check for any other categories containing soccer/football keywords
-      for (const category of Object.keys(daySchedule)) {
-        const lowerCategory = category.toLowerCase();
-        if (
-          (lowerCategory.includes('soccer') ||
-           lowerCategory.includes('football') ||
-           lowerCategory.includes('premier') ||
-           lowerCategory.includes('liga') ||
-           lowerCategory.includes('serie')) &&
-          !soccerCategories.includes(category)
-        ) {
-          const events = daySchedule[category];
-          if (!events || !Array.isArray(events)) continue;
-
-          for (const event of events) {
-            try {
-              const match = this.parseEvent(event, dateKey);
-              if (match) {
-                matches.push(match);
-              }
-            } catch (error) {
-              logger.warn(`Failed to parse event: ${error}`);
-            }
-          }
-        }
-      }
-    }
-
-    return matches;
-  }
-
-  /**
-   * Parse individual event into Match object
-   */
-  private parseEvent(event: DaddyLiveEvent, dateKey: string): Match | null {
-    try {
-      // Extract competition and teams from event string
-      // Format: "Europe - UEFA Youth League : Kairat U19 vs Real Madrid U19"
-      const { competition, homeTeam, awayTeam } = this.parseEventString(event.event);
-
-      if (!homeTeam || !awayTeam) {
-        logger.warn(`Could not parse teams from: ${event.event}`);
-        return null;
-      }
-
-      // Extract simple date from dateKey (e.g., "Tuesday 30th Sep 2025" -> "2025-09-30")
-      const simpleDate = this.extractDate(dateKey);
-
-      // Create match object
-      const match: Match = {
-        id: `daddylive-${this.sanitize(event.event)}-${event.time}`,
-        homeTeam,
-        awayTeam,
-        time: event.time || 'TBD',
-        date: simpleDate,
-        competition: competition || 'Football',
-        links: event.channels.map(channel => ({
-          url: channel.channel_id,
-          quality: 'HD',
-          type: 'stream' as const,
-          language: channel.channel_name || 'English',
-          channelName: channel.channel_name
-        })),
-        source: 'daddylive'
-      };
-
-      return match;
-    } catch (error) {
-      logger.error(`Error parsing event: ${error}`);
-      return null;
-    }
-  }
-
-  /**
-   * Parse event string to extract competition and team names
-   * Format: "Europe - UEFA Youth League : Kairat U19 vs Real Madrid U19"
-   */
-  private parseEventString(eventString: string): { competition: string; homeTeam: string; awayTeam: string } {
+  private parseEventTitle(eventTitle: string): { competition: string; homeTeam: string; awayTeam: string } {
     let competition = 'Football';
-    let matchPart = eventString;
+    let matchPart = eventTitle;
 
     // Check if there's a colon separator (competition : match)
-    if (eventString.includes(' : ')) {
-      const parts = eventString.split(' : ');
+    if (eventTitle.includes(' : ')) {
+      const parts = eventTitle.split(' : ');
       competition = parts[0].trim();
       matchPart = parts[1].trim();
+    } else if (eventTitle.includes(' - ') && eventTitle.includes(' vs ')) {
+      // Handle format like "League - Sublease - Team A vs Team B"
+      const lastVsIndex = eventTitle.lastIndexOf(' vs ');
+      const beforeVs = eventTitle.substring(0, lastVsIndex);
+      const afterVs = eventTitle.substring(lastVsIndex + 4);
+
+      // Find the last dash before the teams
+      const lastDashIndex = beforeVs.lastIndexOf(' - ');
+      if (lastDashIndex !== -1) {
+        competition = beforeVs.substring(0, lastDashIndex).trim();
+        matchPart = beforeVs.substring(lastDashIndex + 3).trim() + ' vs ' + afterVs.trim();
+      }
     }
 
     // Parse team names from match part
@@ -256,6 +157,7 @@ export class DaddyLiveScheduleService {
 
     return { competition, homeTeam, awayTeam };
   }
+
 
   /**
    * Parse team names from event string
@@ -288,46 +190,6 @@ export class DaddyLiveScheduleService {
     return { homeTeam: '', awayTeam: '' };
   }
 
-  /**
-   * Extract date from date key string
-   * Format: "Tuesday 30th Sep 2025 - Schedule Time UK GMT" -> "2025-09-30"
-   */
-  private extractDate(dateKey: string): string {
-    try {
-      // Extract the date part before the dash
-      const datePart = dateKey.split(' - ')[0].trim();
-
-      // Parse date formats like "Tuesday 30th Sep 2025"
-      const months: Record<string, string> = {
-        'jan': '01', 'january': '01',
-        'feb': '02', 'february': '02',
-        'mar': '03', 'march': '03',
-        'apr': '04', 'april': '04',
-        'may': '05',
-        'jun': '06', 'june': '06',
-        'jul': '07', 'july': '07',
-        'aug': '08', 'august': '08',
-        'sep': '09', 'september': '09',
-        'oct': '10', 'october': '10',
-        'nov': '11', 'november': '11',
-        'dec': '12', 'december': '12'
-      };
-
-      // Match patterns like "30th Sep 2025"
-      const match = datePart.match(/(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]+)\s+(\d{4})/i);
-      if (match) {
-        const day = match[1].padStart(2, '0');
-        const month = months[match[2].toLowerCase()] || '01';
-        const year = match[3];
-        return `${year}-${month}-${day}`;
-      }
-
-      // Fallback to today's date
-      return new Date().toISOString().split('T')[0];
-    } catch {
-      return new Date().toISOString().split('T')[0];
-    }
-  }
 
   /**
    * Sanitize string for use in ID
