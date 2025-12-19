@@ -118,3 +118,16 @@ venv/
 # Unnecessary files
 ventoy-*/
 *.tar.gz
+
+# Cursor IDE
+.cursor/
+.cursor
+
+# Claude AI
+.claude/
+.claude
+docs/claude-context.md
+docs/claude-context.md.backup
+
+# Scripts folder (development only)
+scripts/

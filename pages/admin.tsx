@@ -1,16 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
-import { getSourceManager } from '../src/services/sourceManager';
 
 interface SourceHealth {
   name: string;
   status: 'healthy' | 'degraded' | 'down';
   lastCheck: string;
   responseTime?: number;
-  errorCount: number;
-  successCount: number;
-  uptime: number;
+  matchCount: number;
 }
 
 const AdminDashboard: React.FC = () => {
@@ -18,15 +15,12 @@ const AdminDashboard: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
   const [sourceHealth, setSourceHealth] = useState<SourceHealth[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
-  // Simple password check (client-side only - for basic protection)
-  const ADMIN_PASSWORD = 'lolli2025'; // Change this to a secure password
-
   useEffect(() => {
-    // Check if already authenticated in session
     const auth = sessionStorage.getItem('admin_authenticated');
     if (auth === 'true') {
       setIsAuthenticated(true);
@@ -34,15 +28,31 @@ const AdminDashboard: React.FC = () => {
     }
   }, []);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === ADMIN_PASSWORD) {
-      setIsAuthenticated(true);
-      sessionStorage.setItem('admin_authenticated', 'true');
-      setAuthError('');
-      checkSourceHealth();
-    } else {
-      setAuthError('Invalid password');
+    setAuthLoading(true);
+    setAuthError('');
+
+    try {
+      const response = await fetch('/api/auth/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setIsAuthenticated(true);
+        sessionStorage.setItem('admin_authenticated', 'true');
+        checkSourceHealth();
+      } else {
+        setAuthError(data.message || 'Invalid password');
+      }
+    } catch (error) {
+      setAuthError('Authentication failed. Please try again.');
+    } finally {
+      setAuthLoading(false);
     }
   };
 
@@ -59,33 +69,30 @@ const AdminDashboard: React.FC = () => {
       const daddyLiveStart = Date.now();
       const daddyLiveResponse = await fetch('/api/matches', { cache: 'no-store' });
       const daddyLiveTime = Date.now() - daddyLiveStart;
-      const daddyLiveData = await daddyLiveResponse.json();
-      const daddyLiveHealth: SourceHealth = {
-        name: 'DaddyLive (Primary)',
-        status: daddyLiveResponse.ok && daddyLiveData.length > 0 ? 'healthy' : 'degraded',
-        lastCheck: new Date().toLocaleTimeString(),
-        responseTime: daddyLiveTime,
-        errorCount: daddyLiveResponse.ok ? 0 : 1,
-        successCount: daddyLiveResponse.ok ? 1 : 0,
-        uptime: daddyLiveResponse.ok ? 100 : 0
-      };
-
+      const daddyLiveData = daddyLiveResponse.ok ? await daddyLiveResponse.json() : [];
+      
       // Check TotalSportek
       const totalSportekStart = Date.now();
       const totalSportekResponse = await fetch('/api/totalsportek/matches', { cache: 'no-store' });
       const totalSportekTime = Date.now() - totalSportekStart;
       const totalSportekData = totalSportekResponse.ok ? await totalSportekResponse.json() : [];
-      const totalSportekHealth: SourceHealth = {
-        name: 'TotalSportek7 (Fallback)',
-        status: totalSportekResponse.ok && totalSportekData.length > 0 ? 'healthy' : 'degraded',
-        lastCheck: new Date().toLocaleTimeString(),
-        responseTime: totalSportekTime,
-        errorCount: totalSportekResponse.ok ? 0 : 1,
-        successCount: totalSportekResponse.ok ? 1 : 0,
-        uptime: totalSportekResponse.ok ? 100 : 0
-      };
 
-      setSourceHealth([daddyLiveHealth, totalSportekHealth]);
+      setSourceHealth([
+        {
+          name: 'DaddyLive',
+          status: daddyLiveResponse.ok && daddyLiveData.length > 0 ? 'healthy' : daddyLiveResponse.ok ? 'degraded' : 'down',
+          lastCheck: new Date().toLocaleTimeString(),
+          responseTime: daddyLiveTime,
+          matchCount: daddyLiveData.length || 0
+        },
+        {
+          name: 'TotalSportek',
+          status: totalSportekResponse.ok && totalSportekData.length > 0 ? 'healthy' : totalSportekResponse.ok ? 'degraded' : 'down',
+          lastCheck: new Date().toLocaleTimeString(),
+          responseTime: totalSportekTime,
+          matchCount: totalSportekData.length || 0
+        }
+      ]);
       setLastUpdate(new Date());
     } catch (error) {
       console.error('Error checking source health:', error);
@@ -96,100 +103,95 @@ const AdminDashboard: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'healthy': return 'bg-green-100 text-green-800 border-green-300';
-      case 'degraded': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-      case 'down': return 'bg-red-100 text-red-800 border-red-300';
-      default: return 'bg-gray-100 text-gray-800 border-gray-300';
+      case 'healthy': return 'bg-green-500';
+      case 'degraded': return 'bg-amber-500';
+      case 'down': return 'bg-red-500';
+      default: return 'bg-white/20';
     }
   };
 
-  const getStatusIcon = (status: string) => {
+  const getStatusBg = (status: string) => {
     switch (status) {
-      case 'healthy':
-        return (
-          <svg className="w-6 h-6 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-          </svg>
-        );
-      case 'degraded':
-        return (
-          <svg className="w-6 h-6 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-          </svg>
-        );
-      case 'down':
-        return (
-          <svg className="w-6 h-6 text-red-600" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-          </svg>
-        );
-      default:
-        return null;
+      case 'healthy': return 'bg-green-500/10 border-green-500/20';
+      case 'degraded': return 'bg-amber-500/10 border-amber-500/20';
+      case 'down': return 'bg-red-500/10 border-red-500/20';
+      default: return 'bg-white/5 border-white/10';
     }
   };
 
+  // Login Screen
   if (!isAuthenticated) {
     return (
       <>
         <Head>
-          <title>Admin Login - Lolli Live Streams</title>
+          <title>Admin Login - lolli</title>
+          <meta name="theme-color" content="#0a0a0a" />
         </Head>
 
-        <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center px-4">
-          <div className="max-w-md w-full space-y-8">
-            <div className="text-center">
-              <h1 className="text-4xl font-bold text-white mb-2">Admin Dashboard</h1>
-              <p className="text-gray-400">Enter password to access</p>
+        <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center px-4">
+          <div className="w-full max-w-sm">
+            {/* Logo */}
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center shadow-2xl shadow-red-500/30 mb-4">
+                <span className="text-white font-bold text-2xl">L</span>
+              </div>
+              <h1 className="text-2xl font-semibold text-white">Admin Access</h1>
+              <p className="text-white/40 text-sm mt-1">Enter password to continue</p>
             </div>
 
-            <form onSubmit={handleLogin} className="bg-white rounded-lg shadow-xl p-8 space-y-6">
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                  Admin Password
-                </label>
-                <div className="relative">
-                  <input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-arsenalRed focus:border-transparent"
-                    placeholder="Enter password"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                  >
-                    {showPassword ? (
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </svg>
-                    ) : (
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                      </svg>
-                    )}
-                  </button>
-                </div>
-                {authError && (
-                  <p className="mt-2 text-sm text-red-600">{authError}</p>
-                )}
+            {/* Login Form */}
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div className="relative">
+                <input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-[#161616] border border-white/[0.08] rounded-2xl px-5 py-4 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:border-red-500/30 transition-all"
+                  placeholder="Enter password"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
+                >
+                  {showPassword ? (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                    </svg>
+                  )}
+                </button>
               </div>
+
+              {authError && (
+                <p className="text-red-400 text-sm text-center">{authError}</p>
+              )}
 
               <button
                 type="submit"
-                className="w-full bg-gradient-to-r from-arsenalRed to-red-600 hover:from-red-700 hover:to-red-800 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-arsenalRed focus:ring-offset-2"
+                disabled={authLoading}
+                className="w-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 disabled:from-gray-600 disabled:to-gray-700 text-white py-4 rounded-2xl font-semibold transition-all duration-200 shadow-lg shadow-red-500/25 disabled:shadow-none flex items-center justify-center gap-2"
               >
-                Login
+                {authLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Authenticating...
+                  </>
+                ) : (
+                  'Login'
+                )}
               </button>
             </form>
 
-            <div className="text-center">
-              <Link href="/" className="text-gray-400 hover:text-white transition-colors">
-                ← Back to Home
+            <div className="text-center mt-6">
+              <Link href="/dashboard" className="text-white/40 text-sm hover:text-white/60 transition-colors">
+                ← Back to Dashboard
               </Link>
             </div>
           </div>
@@ -198,130 +200,151 @@ const AdminDashboard: React.FC = () => {
     );
   }
 
+  // Admin Dashboard
   return (
     <>
       <Head>
-        <title>Admin Dashboard - Lolli Live Streams</title>
+        <title>Admin Dashboard - lolli</title>
+        <meta name="theme-color" content="#0a0a0a" />
       </Head>
 
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-red-50">
+      <div className="min-h-screen bg-[#0a0a0a] text-white">
         {/* Header */}
-        <div className="bg-white border-b border-gray-200 shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 py-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-                <p className="text-gray-600 mt-1">System health monitoring and configuration</p>
+        <header className="sticky top-0 z-50 bg-[#0a0a0a]/80 backdrop-blur-xl border-b border-white/[0.06]">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6">
+            <div className="flex items-center justify-between h-14">
+              <div className="flex items-center gap-3">
+                <Link href="/dashboard" className="p-2 -ml-2 hover:bg-white/5 rounded-xl transition-all text-white/60 hover:text-white">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </Link>
+                <h1 className="text-lg font-semibold">Admin Panel</h1>
               </div>
               <button
                 onClick={handleLogout}
-                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition-colors"
+                className="px-4 py-2 text-sm text-white/60 hover:text-white hover:bg-white/5 rounded-xl transition-all"
               >
                 Logout
               </button>
             </div>
           </div>
-        </div>
+        </header>
 
-        <main className="max-w-7xl mx-auto px-4 py-8 space-y-8">
-          {/* Source Health Monitoring */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+          {/* Source Health Section */}
+          <section>
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">Source Health Status</h2>
-              <div className="flex items-center space-x-4">
+              <div>
+                <h2 className="text-xl font-semibold">Source Health</h2>
                 {lastUpdate && (
-                  <span className="text-sm text-gray-500">
-                    Last updated: {lastUpdate.toLocaleTimeString()}
-                  </span>
+                  <p className="text-white/40 text-sm mt-1">
+                    Last checked: {lastUpdate.toLocaleTimeString()}
+                  </p>
                 )}
-                <button
-                  onClick={checkSourceHealth}
-                  disabled={isLoading}
-                  className="bg-gradient-to-r from-arsenalRed to-red-600 hover:from-red-700 hover:to-red-800 disabled:from-gray-400 disabled:to-gray-500 text-white px-4 py-2 rounded-lg font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-arsenalRed focus:ring-offset-2 disabled:cursor-not-allowed"
-                >
-                  {isLoading ? 'Checking...' : '🔄 Refresh'}
-                </button>
               </div>
+              <button
+                onClick={checkSourceHealth}
+                disabled={isLoading}
+                className="flex items-center gap-2 px-4 py-2.5 bg-red-500 hover:bg-red-600 disabled:bg-white/10 disabled:text-white/40 rounded-xl text-sm font-medium transition-all shadow-lg shadow-red-500/25 disabled:shadow-none"
+              >
+                <svg className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {isLoading ? 'Checking...' : 'Refresh'}
+              </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {sourceHealth.map((source, index) => (
-                <div key={index} className={`border-2 rounded-lg p-6 ${getStatusColor(source.status)}`}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {sourceHealth.map((source, idx) => (
+                <div 
+                  key={idx} 
+                  className={`p-6 rounded-2xl border ${getStatusBg(source.status)} transition-all`}
+                >
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold">{source.name}</h3>
-                    {getStatusIcon(source.status)}
+                    <div className="flex items-center gap-3">
+                      <div className={`w-3 h-3 rounded-full ${getStatusColor(source.status)}`} />
+                      <h3 className="font-semibold text-lg">{source.name}</h3>
+                    </div>
+                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full uppercase ${
+                      source.status === 'healthy' ? 'bg-green-500/20 text-green-400' :
+                      source.status === 'degraded' ? 'bg-amber-500/20 text-amber-400' :
+                      'bg-red-500/20 text-red-400'
+                    }`}>
+                      {source.status}
+                    </span>
                   </div>
 
-                  <div className="space-y-2 text-sm">
+                  <div className="space-y-3 text-sm">
                     <div className="flex justify-between">
-                      <span className="font-medium">Status:</span>
-                      <span className="capitalize">{source.status}</span>
+                      <span className="text-white/40">Response Time</span>
+                      <span className="text-white/80 font-medium">{source.responseTime}ms</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="font-medium">Response Time:</span>
-                      <span>{source.responseTime}ms</span>
+                      <span className="text-white/40">Matches Found</span>
+                      <span className="text-white/80 font-medium">{source.matchCount}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="font-medium">Uptime:</span>
-                      <span>{source.uptime}%</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="font-medium">Last Check:</span>
-                      <span>{source.lastCheck}</span>
+                      <span className="text-white/40">Last Check</span>
+                      <span className="text-white/80 font-medium">{source.lastCheck}</span>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
 
           {/* Quick Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Active Sources</h3>
-              <p className="text-4xl font-bold text-green-600">
-                {sourceHealth.filter(s => s.status === 'healthy').length}/{sourceHealth.length}
-              </p>
+          <section>
+            <h2 className="text-xl font-semibold mb-6">Overview</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-[#161616] rounded-2xl p-6">
+                <p className="text-white/40 text-sm mb-1">Active Sources</p>
+                <p className="text-3xl font-bold text-green-400">
+                  {sourceHealth.filter(s => s.status === 'healthy').length}
+                  <span className="text-white/20 text-lg font-normal">/{sourceHealth.length}</span>
+                </p>
+              </div>
+              <div className="bg-[#161616] rounded-2xl p-6">
+                <p className="text-white/40 text-sm mb-1">Avg Response</p>
+                <p className="text-3xl font-bold text-white">
+                  {sourceHealth.length > 0
+                    ? Math.round(sourceHealth.reduce((sum, s) => sum + (s.responseTime || 0), 0) / sourceHealth.length)
+                    : 0}
+                  <span className="text-white/20 text-lg font-normal">ms</span>
+                </p>
+              </div>
+              <div className="bg-[#161616] rounded-2xl p-6">
+                <p className="text-white/40 text-sm mb-1">Total Matches</p>
+                <p className="text-3xl font-bold text-white">
+                  {sourceHealth.reduce((sum, s) => sum + s.matchCount, 0)}
+                </p>
+              </div>
             </div>
-
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Avg Response Time</h3>
-              <p className="text-4xl font-bold text-blue-600">
-                {sourceHealth.length > 0
-                  ? Math.round(sourceHealth.reduce((sum, s) => sum + (s.responseTime || 0), 0) / sourceHealth.length)
-                  : 0}
-                <span className="text-lg">ms</span>
-              </p>
-            </div>
-
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">System Status</h3>
-              <p className="text-4xl font-bold text-green-600">✓ Operational</p>
-            </div>
-          </div>
+          </section>
 
           {/* System Info */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">System Information</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <div className="flex justify-between py-2 border-b border-gray-200">
-                <span className="font-medium text-gray-700">Version:</span>
-                <span className="text-gray-600">v3.0 (Lolli)</span>
+          <section>
+            <h2 className="text-xl font-semibold mb-6">System</h2>
+            <div className="bg-[#161616] rounded-2xl p-6 space-y-4">
+              <div className="flex justify-between py-2 border-b border-white/[0.06]">
+                <span className="text-white/40">Version</span>
+                <span className="text-white/80 font-medium">v3.0 (lolli)</span>
               </div>
-              <div className="flex justify-between py-2 border-b border-gray-200">
-                <span className="font-medium text-gray-700">Primary Source:</span>
-                <span className="text-gray-600">DaddyLive API</span>
+              <div className="flex justify-between py-2 border-b border-white/[0.06]">
+                <span className="text-white/40">Primary Source</span>
+                <span className="text-white/80 font-medium">DaddyLive API</span>
               </div>
-              <div className="flex justify-between py-2 border-b border-gray-200">
-                <span className="font-medium text-gray-700">Fallback Source:</span>
-                <span className="text-gray-600">TotalSportek7</span>
+              <div className="flex justify-between py-2 border-b border-white/[0.06]">
+                <span className="text-white/40">Fallback Source</span>
+                <span className="text-white/80 font-medium">TotalSportek</span>
               </div>
-              <div className="flex justify-between py-2 border-b border-gray-200">
-                <span className="font-medium text-gray-700">Cache Duration:</span>
-                <span className="text-gray-600">60 seconds</span>
+              <div className="flex justify-between py-2">
+                <span className="text-white/40">Cache Duration</span>
+                <span className="text-white/80 font-medium">60 seconds</span>
               </div>
             </div>
-          </div>
+          </section>
         </main>
       </div>
     </>

@@ -326,7 +326,7 @@ sudo systemctl reload nginx
 ### Quick Links
 - **Production:** https://lolli.eniolabi.com
 - **Dashboard:** https://lolli.eniolabi.com/dashboard
-- **Admin Panel:** https://lolli.eniolabi.com/admin (Password: lolli2025)
+- **Admin Panel:** https://lolli.eniolabi.com/admin (Password: [set in .env.local])
 
 ---
 
@@ -434,7 +434,7 @@ const CACHE_DURATION = 60 * 1000; // 60 seconds
 ### Admin Password
 ```typescript
 // pages/admin.tsx
-const ADMIN_PASSWORD = 'lolli2025';
+const ADMIN_PASSWORD = '[set in .env.local]';
 ```
 
 ---

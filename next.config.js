@@ -1,7 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
-    domains: ['streamed.pk', 'sportsurge.bz', 'live.totalsportek007.com'],
+    domains: [
+      'streamed.pk', 
+      'sportsurge.bz', 
+      'live.totalsportek007.com',
+      'resources.premierleague.com',
+      'upload.wikimedia.org'
+    ],
     unoptimized: true,
   },
   async headers() {

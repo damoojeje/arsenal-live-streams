@@ -4,42 +4,34 @@ import Head from 'next/head';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 
-// Dynamically import enhanced player with stream extraction (client-side only)
+// Dynamically import player (client-side only)
 const EnhancedPlayer = dynamic(() => import('../../src/components/EnhancedPlayer'), {
   ssr: false,
+  loading: () => (
+    <div className="w-full h-full bg-black flex items-center justify-center">
+      <div className="w-10 h-10 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+    </div>
+  )
 });
-
-/**
- * Stream Player Page with Ad-Free Direct Playback
- * Attempts to extract direct m3u8 URLs for ad-free streaming
- * Falls back to iframe if extraction fails
- * Mobile-optimized viewing experience
- */
 
 export default function PlayerPage() {
   const router = useRouter();
   const { channelId } = router.query;
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Construct the iframe URL for DaddyLive
-  const iframeUrl = channelId ? `https://dlhd.dad/stream/stream-${channelId}.php` : '';
-
   useEffect(() => {
-    // Handle fullscreen events
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
     };
-
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
   const toggleFullscreen = () => {
-    const playerContainer = document.getElementById('player-container');
-    if (!playerContainer) return;
-
+    const el = document.getElementById('player-container');
+    if (!el) return;
     if (!document.fullscreenElement) {
-      playerContainer.requestFullscreen();
+      el.requestFullscreen();
     } else {
       document.exitFullscreen();
     }
@@ -47,11 +39,11 @@ export default function PlayerPage() {
 
   if (!channelId) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-white text-center">
-          <h1 className="text-2xl font-bold mb-4">Invalid Channel</h1>
-          <Link href="/dashboard" className="text-arsenalRed hover:underline">
-            ← Back to Dashboard
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-white/60 mb-4">Invalid channel</p>
+          <Link href="/dashboard" className="text-red-500 hover:text-red-400">
+            ← Back
           </Link>
         </div>
       </div>
@@ -59,91 +51,49 @@ export default function PlayerPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900">
+    <div className="h-screen bg-black flex flex-col">
       <Head>
-        <title>Stream Player - Arsenal Streams</title>
-        <meta name="description" content="Watch live stream" />
+        <title>Stream • lolli</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="theme-color" content="#000000" />
       </Head>
 
-      {/* Header Bar */}
-      <div className="bg-gradient-to-r from-arsenalRed to-red-700 text-white px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center space-x-4">
+      {/* Minimal Header - Hidden in fullscreen */}
+      {!isFullscreen && (
+        <header className="flex items-center justify-between px-4 py-2 bg-black/90 border-b border-white/5">
           <Link
             href="/dashboard"
-            className="flex items-center space-x-2 hover:text-red-100 transition-colors"
+            className="flex items-center gap-2 text-white/60 hover:text-white transition-colors text-sm"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-            <span className="font-medium">Back to Matches</span>
+            Back
           </Link>
-        </div>
 
-        <div className="flex items-center space-x-2">
-          <span className="text-sm text-red-100">
-            DaddyLive • Channel {channelId}
-          </span>
-          <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-          <span className="text-xs">LIVE</span>
-        </div>
-
-        <button
-          onClick={toggleFullscreen}
-          className="flex items-center space-x-2 bg-white bg-opacity-20 hover:bg-opacity-30 px-4 py-2 rounded-lg transition-colors"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-          </svg>
-          <span className="hidden sm:inline">Fullscreen</span>
-        </button>
-      </div>
-
-      {/* Player Container with Ad Blocking */}
-      <div
-        id="player-container"
-        className="relative w-full bg-black"
-        style={{ height: 'calc(100vh - 60px)' }}
-      >
-        {channelId && (
-          <EnhancedPlayer
-            channelId={channelId as string}
-          />
-        )}
-      </div>
-
-      {/* Instructions/Info Bar */}
-      {!isFullscreen && (
-        <div className="bg-gray-800 text-gray-300 px-4 py-3 text-center text-sm">
-          <p>
-            🛡️ <strong>Built-in Ad Blocker Active:</strong> Popups blocked • New tabs prevented • Mobile optimized
-          </p>
-          <p className="text-xs text-gray-400 mt-2">
-            Click the Fullscreen button in the player for the best viewing experience.
-          </p>
-        </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 text-sm">
+              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+              <span className="text-white/50">Channel {channelId}</span>
+            </div>
+            
+            <button
+              onClick={toggleFullscreen}
+              className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white/60 hover:text-white"
+              title="Fullscreen"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+              </svg>
+            </button>
+          </div>
+        </header>
       )}
 
-      {/* Footer - Disclaimer */}
-      {!isFullscreen && (
-        <div className="bg-gray-900 text-gray-400 px-4 py-6 text-center text-xs space-y-3">
-          <p className="text-sm">
-            <strong className="text-gray-300">⚠️ Disclaimer</strong>
-          </p>
-          <p className="leading-relaxed">
-            Streams are <strong>not hosted on our servers</strong>. This is a fork of DaddyLive streaming service.
-            All content is provided by third-party sources and we do not host, upload, or control any of the streams.
-          </p>
-          <p className="leading-relaxed">
-            <strong className="text-gray-300">🛡️ Built-in Protection:</strong><br />
-            This player includes automatic ad blocking to prevent popups, new tabs, and overlay ads.
-            Optimized for mobile devices - no external ad blocker needed.
-          </p>
-          <p className="text-gray-600 text-[10px] mt-4">
-            Stream source: DaddyLive via Mad Titan Sports • Interface by lolli
-          </p>
-        </div>
-      )}
+      {/* Player Container */}
+      <div id="player-container" className="flex-1 relative bg-black">
+        {channelId && <EnhancedPlayer channelId={channelId as string} />}
+      </div>
     </div>
   );
 }

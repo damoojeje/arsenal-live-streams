@@ -1,114 +1,159 @@
-import { getDaddyLiveBaseService } from './baseService';
+import axios from 'axios';
 import { Match } from '../../types';
 import logger from '../../utils/logger';
 
 /**
- * DaddyLive Schedule Service
- * Scrapes match schedule from dlhd.dad website
- * Updated to use actual DaddyLive website structure (Nov 2025)
+ * DaddyLive Schedule Service v2.1
+ * 
+ * Fetches match schedules from DaddyLive's JSON API
+ * Updated Dec 2025 - Uses schedule-generated.json API
  */
 
+// Seed URL - DaddyLive uses redirects, so we follow them to get active domain
+const SEED_URL = 'https://daddylive.sx/';
+const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36';
+
 export class DaddyLiveScheduleService {
-  private baseService = getDaddyLiveBaseService();
   private scheduleCache: { data: Match[]; timestamp: number } | null = null;
   private cacheDuration = 60000; // 60 seconds
+  private activeDomain: string | null = null;
+  private lastDomainCheck = 0;
+  private domainCacheDuration = 300000; // 5 minutes
 
   /**
-   * Fetch football matches from DaddyLive schedule API
+   * Resolve the active DaddyLive domain by following redirects
+   */
+  private async resolveActiveDomain(): Promise<string> {
+    const now = Date.now();
+    
+    // Return cached domain if still valid
+    if (this.activeDomain && (now - this.lastDomainCheck) < this.domainCacheDuration) {
+      return this.activeDomain;
+    }
+
+    try {
+      logger.info(`Resolving active DaddyLive domain from seed: ${SEED_URL}`);
+      
+      const response = await axios.get(SEED_URL, {
+        headers: { 'User-Agent': USER_AGENT },
+        maxRedirects: 10,
+        timeout: 10000,
+        validateStatus: () => true
+      });
+
+      // Get final URL after redirects
+      const finalUrl = response.request?.res?.responseUrl || response.config?.url || SEED_URL;
+      const parsed = new URL(finalUrl);
+      this.activeDomain = `${parsed.protocol}//${parsed.hostname}/`;
+      this.lastDomainCheck = now;
+
+      logger.info(`Active DaddyLive domain resolved: ${this.activeDomain}`);
+      return this.activeDomain;
+    } catch (error) {
+      logger.warn(`Failed to resolve DaddyLive domain: ${error}`);
+      // Fallback to known working domain
+      this.activeDomain = 'https://daddyhd.com/';
+      this.lastDomainCheck = now;
+      return this.activeDomain;
+    }
+  }
+
+  /**
+   * Fetch soccer matches from DaddyLive JSON API
    */
   async fetchMatches(): Promise<Match[]> {
     // Return cached data if still valid
     if (this.scheduleCache && (Date.now() - this.scheduleCache.timestamp) < this.cacheDuration) {
-      logger.info('Returning cached DaddyLive schedule');
+      logger.info(`Returning ${this.scheduleCache.data.length} cached DaddyLive matches`);
       return this.scheduleCache.data;
     }
 
     try {
-      // Scrape the actual DaddyLive website
-      const cheerio = require('cheerio');
-      const client = this.baseService.getClient();
-      const scheduleUrl = 'https://dlhd.dad/index.php?cat=Soccer';
-
+      const baseDomain = await this.resolveActiveDomain();
+      const scheduleUrl = `${baseDomain}schedule/schedule-generated.json`;
+      
       logger.info(`Fetching schedule from: ${scheduleUrl}`);
 
-      const response = await client.get(scheduleUrl, {
+      const response = await axios.get(scheduleUrl, {
         headers: {
-          ...this.baseService.getHeaders(),
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'User-Agent': USER_AGENT,
+          'Referer': baseDomain,
+          'Accept': 'application/json, text/plain, */*',
           'Accept-Language': 'en-US,en;q=0.5'
-        }
+        },
+        timeout: 15000
       });
 
       if (response.status !== 200) {
         logger.error(`Failed to fetch schedule: HTTP ${response.status}`);
-        return [];
+        return this.scheduleCache?.data || [];
       }
 
-      const $ = cheerio.load(response.data);
+      const scheduleData = response.data;
       const matches: Match[] = [];
 
-      // Parse schedule events
-      $('.schedule__event').each((_: number, element: any) => {
-        try {
-          const $event = $(element);
+      // Parse JSON structure: { "Date String": { "Category</span>": [...events] } }
+      for (const dateKey of Object.keys(scheduleData)) {
+        const dateSchedule = scheduleData[dateKey];
 
-          // Extract time
-          const timeStr = $event.find('.schedule__time').attr('data-time') || '';
+        // Look for Soccer category (note the </span> suffix in the key)
+        const soccerKey = Object.keys(dateSchedule).find(k => 
+          k.toLowerCase().includes('soccer') || k.toLowerCase().includes('football')
+        );
 
-          // Extract event title (League : Team A vs Team B)
-          const eventTitle = $event.find('.schedule__eventTitle').text().trim();
+        if (!soccerKey) continue;
+        
+        const soccerEvents = dateSchedule[soccerKey];
+        if (!Array.isArray(soccerEvents)) continue;
 
-          // Extract channels
-          const channels: any[] = [];
-          $event.find('.schedule__channels a').each((__: number, linkElement: any) => {
-            const $link = $(linkElement);
-            const href = $link.attr('href') || '';
-            const channelName = $link.attr('title') || $link.text().trim();
-            const channelId = href.match(/id=(\d+)/)?.[1];
+        logger.info(`Found ${soccerEvents.length} soccer matches for ${dateKey}`);
 
-            if (channelId) {
-              channels.push({
-                channel_id: channelId,
-                channel_name: channelName
-              });
+        // Process each event
+        for (const event of soccerEvents) {
+          try {
+            const eventName = event.event || '';
+            const timeStr = event.time || 'TBD';
+            
+            // Combine channels and channels2 arrays
+            const channels = [
+              ...(event.channels || []),
+              ...(event.channels2 || [])
+            ];
+
+            if (!eventName || channels.length === 0) continue;
+
+            // Parse event name to extract competition and teams
+            const { competition, homeTeam, awayTeam } = this.parseEventTitle(eventName);
+
+            if (!homeTeam || !awayTeam) {
+              logger.warn(`Could not parse teams from: ${eventName}`);
+              continue;
             }
-          });
 
-          if (!eventTitle || channels.length === 0) {
-            return; // Skip events without title or channels
+            // Create match object
+            const match: Match = {
+              id: `daddylive-${this.sanitize(eventName)}-${timeStr}`,
+              homeTeam,
+              awayTeam,
+              time: timeStr,
+              date: new Date().toISOString(),
+              competition: competition || 'Football',
+              links: channels.map((ch: any) => ({
+                url: ch.channel_id || '',
+                quality: 'HD',
+                type: 'stream' as const,
+                language: 'English',
+                channelName: this.cleanText(ch.channel_name || 'Unknown')
+              })),
+              source: 'daddylive'
+            };
+
+            matches.push(match);
+          } catch (parseError) {
+            logger.warn(`Error parsing event: ${parseError}`);
           }
-
-          // Parse event title to extract competition and teams
-          const { competition, homeTeam, awayTeam } = this.parseEventTitle(eventTitle);
-
-          if (!homeTeam || !awayTeam) {
-            logger.warn(`Could not parse teams from: ${eventTitle}`);
-            return;
-          }
-
-          // Create match object
-          const match: Match = {
-            id: `daddylive-${this.sanitize(eventTitle)}-${timeStr}`,
-            homeTeam,
-            awayTeam,
-            time: timeStr || 'TBD',
-            date: new Date().toISOString(),
-            competition: competition || 'Football',
-            links: channels.map(channel => ({
-              url: channel.channel_id,
-              quality: 'HD',
-              type: 'stream' as const,
-              language: 'English',
-              channelName: channel.channel_name
-            })),
-            source: 'daddylive'
-          };
-
-          matches.push(match);
-        } catch (error) {
-          logger.warn(`Error parsing event: ${error}`);
         }
-      });
+      }
 
       // Cache the results
       this.scheduleCache = {
@@ -116,18 +161,21 @@ export class DaddyLiveScheduleService {
         timestamp: Date.now()
       };
 
-      logger.info(`DaddyLive: Found ${matches.length} football matches`);
+      logger.info(`DaddyLive: Found ${matches.length} soccer matches`);
       return matches;
 
     } catch (error) {
       logger.error(`Error fetching DaddyLive schedule: ${error}`);
-      return [];
+      // Return stale cache if available
+      return this.scheduleCache?.data || [];
     }
   }
 
   /**
    * Parse event title to extract competition and teams
-   * Format: "League : Team A vs Team B" or "League - Sublease : Team A vs Team B"
+   * Formats:
+   *   - "League : Team A vs Team B"
+   *   - "League - Subleague : Team A vs Team B"
    */
   private parseEventTitle(eventTitle: string): { competition: string; homeTeam: string; awayTeam: string } {
     let competition = 'Football';
@@ -135,21 +183,9 @@ export class DaddyLiveScheduleService {
 
     // Check if there's a colon separator (competition : match)
     if (eventTitle.includes(' : ')) {
-      const parts = eventTitle.split(' : ');
-      competition = parts[0].trim();
-      matchPart = parts[1].trim();
-    } else if (eventTitle.includes(' - ') && eventTitle.includes(' vs ')) {
-      // Handle format like "League - Sublease - Team A vs Team B"
-      const lastVsIndex = eventTitle.lastIndexOf(' vs ');
-      const beforeVs = eventTitle.substring(0, lastVsIndex);
-      const afterVs = eventTitle.substring(lastVsIndex + 4);
-
-      // Find the last dash before the teams
-      const lastDashIndex = beforeVs.lastIndexOf(' - ');
-      if (lastDashIndex !== -1) {
-        competition = beforeVs.substring(0, lastDashIndex).trim();
-        matchPart = beforeVs.substring(lastDashIndex + 3).trim() + ' vs ' + afterVs.trim();
-      }
+      const colonIndex = eventTitle.lastIndexOf(' : ');
+      competition = eventTitle.substring(0, colonIndex).trim();
+      matchPart = eventTitle.substring(colonIndex + 3).trim();
     }
 
     // Parse team names from match part
@@ -158,38 +194,44 @@ export class DaddyLiveScheduleService {
     return { competition, homeTeam, awayTeam };
   }
 
-
   /**
    * Parse team names from event string
    */
   private parseTeamNames(eventName: string): { homeTeam: string; awayTeam: string } {
-    // Common patterns: "Team A vs Team B", "Team A v Team B", "Team A - Team B"
-    const patterns = [
-      /^(.+?)\s+vs\s+(.+?)$/i,
+    // Common patterns: "Team A vs Team B", "Team A v Team B"
+    const vsPatterns = [
+      /^(.+?)\s+vs\.?\s+(.+?)$/i,
       /^(.+?)\s+v\s+(.+?)$/i,
-      /^(.+?)\s+@\s+(.+?)$/i
+      /^(.+?)\s+@\s+(.+?)$/i,
     ];
 
-    for (const pattern of patterns) {
+    for (const pattern of vsPatterns) {
       const match = eventName.match(pattern);
       if (match) {
         return {
-          homeTeam: match[1].trim(),
-          awayTeam: match[2].trim()
+          homeTeam: this.cleanText(match[1]),
+          awayTeam: this.cleanText(match[2])
         };
       }
-    }
-
-    // Fallback: split by common separators
-    if (eventName.includes(' vs ')) {
-      const parts = eventName.split(' vs ');
-      return { homeTeam: parts[0].trim(), awayTeam: parts[1].trim() };
     }
 
     // Unable to parse
     return { homeTeam: '', awayTeam: '' };
   }
 
+  /**
+   * Clean text - decode HTML entities, normalize whitespace
+   */
+  private cleanText(text: string): string {
+    return text
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
 
   /**
    * Sanitize string for use in ID
@@ -206,6 +248,15 @@ export class DaddyLiveScheduleService {
    */
   clearCache(): void {
     this.scheduleCache = null;
+    this.activeDomain = null;
+    this.lastDomainCheck = 0;
+  }
+
+  /**
+   * Get the currently resolved domain (for debugging)
+   */
+  getActiveDomain(): string | null {
+    return this.activeDomain;
   }
 }
 

@@ -288,7 +288,7 @@ No `.env` file required - all configuration is in code.
 **Key Settings:**
 - **Port:** 3002 (hardcoded in package.json)
 - **Cache Duration:** 60 seconds (matches API)
-- **Admin Password:** lolli2025 (in pages/admin.tsx)
+- **Admin Password:** [set in .env.local] (in pages/admin.tsx)
 
 ### 6.2 Modifying Configuration
 To change settings, edit these files:
@@ -310,7 +310,7 @@ const CACHE_DURATION = 60 * 1000; // Change to desired duration
 **Admin Password:**
 ```typescript
 // pages/admin.tsx
-const ADMIN_PASSWORD = 'lolli2025'; // Change to secure password
+const ADMIN_PASSWORD = '[set in .env.local]'; // Change to secure password
 ```
 
 ---
@@ -406,7 +406,7 @@ systemctl status arsenal-streams | grep Memory
 
 ### 8.3 Performance Monitoring
 **Admin Dashboard:** https://lolli.eniolabi.com/admin
-- Password: `lolli2025`
+- Password: `[set in .env.local]`
 - Source health monitoring
 - Response time tracking
 - System status

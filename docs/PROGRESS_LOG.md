@@ -315,7 +315,7 @@
 **Implementation Details**:
 - **Authentication**:
   - Simple password protection (session-based)
-  - Password: `lolli2025` (stored client-side)
+  - Password: `[set in .env.local]` (stored client-side)
   - Session storage for auth persistence
   - Logout functionality
 - **Source Monitoring**:

@@ -1,17 +1,15 @@
-import { getDaddyLiveBaseService } from './baseService';
+import axios from 'axios';
 import logger from '../../utils/logger';
 
 /**
- * DaddyLive Stream Resolver Service
+ * DaddyLive Stream Resolver Service v2.0
+ * 
  * Resolves channel IDs to playable HLS stream URLs
- * Based on plugin.video.daddylive v4.43 authentication flow
+ * Updated Dec 2025 - Matches Kodi addon v4.50 authentication flow
  */
 
-interface StreamBundle {
-  b_ts: string;
-  b_rnd: string;
-  b_sig: string;
-}
+const SEED_URL = 'https://daddylive.sx/';
+const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36';
 
 interface ResolvedStream {
   url: string;
@@ -21,20 +19,68 @@ interface ResolvedStream {
 }
 
 export class DaddyLiveStreamResolver {
-  private baseService = getDaddyLiveBaseService();
+  private activeDomain: string | null = null;
+  private lastDomainCheck = 0;
+  private domainCacheDuration = 300000; // 5 minutes
 
   /**
-   * Extract embedded iframe URL from stream page (bypasses ads)
+   * Resolve the active DaddyLive domain
+   */
+  private async resolveActiveDomain(): Promise<string> {
+    const now = Date.now();
+    
+    if (this.activeDomain && (now - this.lastDomainCheck) < this.domainCacheDuration) {
+      return this.activeDomain;
+    }
+
+    try {
+      const response = await axios.get(SEED_URL, {
+        headers: { 'User-Agent': USER_AGENT },
+        maxRedirects: 10,
+        timeout: 10000,
+        validateStatus: () => true
+      });
+
+      const finalUrl = response.request?.res?.responseUrl || response.config?.url || SEED_URL;
+      const parsed = new URL(finalUrl);
+      this.activeDomain = `${parsed.protocol}//${parsed.hostname}/`;
+      this.lastDomainCheck = now;
+
+      logger.info(`Stream resolver domain: ${this.activeDomain}`);
+      return this.activeDomain;
+    } catch (error) {
+      logger.warn(`Domain resolution failed: ${error}`);
+      this.activeDomain = 'https://daddyhd.com/';
+      return this.activeDomain;
+    }
+  }
+
+  /**
+   * Get headers with proper referer
+   */
+  private getHeaders(baseDomain: string): Record<string, string> {
+    return {
+      'User-Agent': USER_AGENT,
+      'Referer': baseDomain,
+      'Origin': baseDomain.replace(/\/$/, ''),
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.5'
+    };
+  }
+
+  /**
+   * Extract embedded iframe URL from stream page
    */
   async extractEmbedUrl(channelId: string): Promise<string | null> {
     try {
+      const baseDomain = await this.resolveActiveDomain();
+      const streamPageUrl = `${baseDomain}watch.php?id=${channelId}`;
+      
       logger.info(`Extracting embed URL for channel: ${channelId}`);
 
-      const streamPageUrl = await this.baseService.buildUrl(`stream/stream-${channelId}.php`);
-      const client = this.baseService.getClient();
-
-      const response = await client.get(streamPageUrl, {
-        headers: this.baseService.getHeaders()
+      const response = await axios.get(streamPageUrl, {
+        headers: this.getHeaders(baseDomain),
+        timeout: 15000
       });
 
       if (response.status !== 200) {
@@ -43,29 +89,26 @@ export class DaddyLiveStreamResolver {
 
       const html = response.data as string;
 
-      // Look for iframe embed patterns
-      const iframePatterns = [
-        /<iframe[^>]+src=["']([^"']+)["']/gi,
-        /embedUrl\s*[:=]\s*["']([^"']+)["']/gi,
-        /embed\s*[:=]\s*["']([^"']+)["']/gi,
-        /player\s*[:=]\s*["']([^"']+)["']/gi
-      ];
-
-      for (const pattern of iframePatterns) {
-        const matches = Array.from(html.matchAll(pattern));
-        for (const match of matches) {
-          const url = match[1];
-          // Filter out ad iframes and tracking pixels
-          if (url &&
-              !url.includes('doubleclick') &&
-              !url.includes('google') &&
-              !url.includes('ad') &&
-              !url.includes('analytics') &&
-              (url.includes('embed') || url.includes('player') || url.includes('stream'))) {
-            logger.info(`Found potential embed URL: ${url}`);
-            return url;
-          }
+      // Look for Player 2 data-url (as per Kodi addon)
+      const player2Match = html.match(/data-url="([^"]+)"\s+title="PLAYER 2"/i);
+      if (player2Match) {
+        let url2 = player2Match[1].replace('//cast', '/cast');
+        if (!url2.startsWith('http')) {
+          url2 = new URL(url2, baseDomain).toString();
         }
+        logger.info(`Found PLAYER 2 embed: ${url2}`);
+        return url2;
+      }
+
+      // Fallback: Look for iframe src
+      const iframeMatch = html.match(/iframe\s+src="([^"]+)"/i);
+      if (iframeMatch) {
+        let url = iframeMatch[1];
+        if (!url.startsWith('http')) {
+          url = new URL(url, baseDomain).toString();
+        }
+        logger.info(`Found iframe embed: ${url}`);
+        return url;
       }
 
       logger.warn(`No embed URL found for channel ${channelId}`);
@@ -78,107 +121,186 @@ export class DaddyLiveStreamResolver {
 
   /**
    * Resolve channel ID to playable stream URL
-   * Uses multiple fallback methods to find direct m3u8 URL
+   * Uses the same authentication flow as Kodi addon v4.50
    */
   async resolveStream(channelId: string): Promise<ResolvedStream | null> {
     try {
+      const baseDomain = await this.resolveActiveDomain();
       logger.info(`Resolving DaddyLive stream for channel: ${channelId}`);
 
-      // Method 1: Try direct m3u8 URL patterns (most common)
-      const directUrls = this.generateDirectStreamUrls(channelId);
-      for (const url of directUrls) {
-        if (await this.testStreamUrl(url)) {
-          logger.info(`Found working direct stream: ${url}`);
-          return {
-            url,
-            headers: this.baseService.getHeaders(),
-            quality: 'HD',
-            type: 'hls'
-          };
+      // Step 1: Get the watch page
+      const watchUrl = `${baseDomain}watch.php?id=${channelId}`;
+      const headers = this.getHeaders(baseDomain);
+
+      const watchResponse = await axios.get(watchUrl, { headers, timeout: 15000 });
+      if (watchResponse.status !== 200) {
+        throw new Error(`Watch page returned ${watchResponse.status}`);
+      }
+
+      let html = watchResponse.data as string;
+      let pageUrl = watchUrl;
+
+      // Step 2: Find and follow Player 2 or iframe
+      const player2Match = html.match(/data-url="([^"]+)"\s+title="PLAYER 2"/i);
+      let playerUrl: string;
+      
+      if (player2Match) {
+        playerUrl = player2Match[1].replace('//cast', '/cast');
+        if (!playerUrl.startsWith('http')) {
+          playerUrl = new URL(playerUrl, baseDomain).toString();
+        }
+      } else {
+        const iframeMatch = html.match(/iframe\s+src="([^"]+)"/i);
+        if (!iframeMatch) {
+          logger.warn('No player URL found');
+          return null;
+        }
+        playerUrl = iframeMatch[1];
+        if (!playerUrl.startsWith('http')) {
+          playerUrl = new URL(playerUrl, baseDomain).toString();
         }
       }
 
-      logger.info('Direct URLs failed, trying page extraction...');
+      // Step 3: Fetch player page
+      const playerHeaders = { ...headers, 'Referer': watchUrl };
+      const playerResponse = await axios.get(playerUrl, { headers: playerHeaders, timeout: 15000 });
+      html = playerResponse.data as string;
+      pageUrl = playerUrl;
 
-      // Method 2: Extract from page HTML
-      const streamPageUrl = await this.baseService.buildUrl(`stream/stream-${channelId}.php`);
-      const client = this.baseService.getClient();
-
-      const response = await client.get(streamPageUrl, {
-        headers: this.baseService.getHeaders()
-      });
-
-      if (response.status !== 200) {
-        throw new Error(`Stream page returned status ${response.status}`);
+      // Step 4: Check for nested iframe
+      const nestedIframeMatch = html.match(/iframe\s+src="([^"]+)"/i);
+      if (nestedIframeMatch) {
+        let nestedUrl = nestedIframeMatch[1];
+        if (!nestedUrl.startsWith('http')) {
+          nestedUrl = new URL(nestedUrl, playerUrl).toString();
+        }
+        const nestedHeaders = { ...headers, 'Referer': playerUrl };
+        const nestedResponse = await axios.get(nestedUrl, { headers: nestedHeaders, timeout: 15000 });
+        html = nestedResponse.data as string;
+        pageUrl = nestedUrl;
       }
 
-      const html = response.data as string;
+      // Step 5: Extract CHANNEL_KEY
+      const channelKeyMatch = html.match(/const\s+(?:CHANNEL_KEY|CHANNEL_ID|CH(?:ANNEL)?_?KEY?)\s*=\s*["']([^"']+)["']/i);
+      if (!channelKeyMatch) {
+        logger.warn('CHANNEL_KEY not found');
+        return null;
+      }
+      const channelKey = channelKeyMatch[1];
+      logger.info(`Found CHANNEL_KEY: ${channelKey}`);
 
-      // Try to extract m3u8 URLs directly from HTML
-      const m3u8Url = this.extractM3U8FromHtml(html);
-      if (m3u8Url && await this.testStreamUrl(m3u8Url)) {
-        logger.info(`Extracted m3u8 from HTML: ${m3u8Url}`);
+      // Step 6: Handle AUTH2 flow (newer method)
+      const authTokenMatch = html.match(/const\s+AUTH_TOKEN\s*=\s*["']([^"']+)["']/i);
+      const authCountryMatch = html.match(/const\s+AUTH_COUNTRY\s*=\s*["']([^"']+)["']/i);
+      const authTsMatch = html.match(/const\s+AUTH_TS\s*=\s*["']([^"']+)["']/i);
+      const authExpiryMatch = html.match(/const\s+AUTH_EXPIRY\s*=\s*["']([^"']+)["']/i);
+
+      if (authTokenMatch && authCountryMatch && authTsMatch && authExpiryMatch) {
+        logger.info('Using AUTH2 flow');
+        const authHeaders = {
+          'User-Agent': USER_AGENT,
+          'Referer': pageUrl,
+          'Origin': new URL(pageUrl).origin
+        };
+
+        try {
+          await axios.post('https://security.newkso.ru/auth2.php', {
+            channelKey,
+            country: authCountryMatch[1],
+            timestamp: authTsMatch[1],
+            expiry: authExpiryMatch[1],
+            token: authTokenMatch[1]
+          }, { headers: authHeaders, timeout: 10000 });
+          logger.info('AUTH2 called successfully');
+        } catch (e) {
+          logger.warn(`AUTH2 failed: ${e}`);
+        }
+      }
+
+      // Step 7: Legacy BUNDLE/XJZ auth flow
+      const bundleMatch = html.match(/const\s+(?:BUNDLE|IJXX|XKZK)\s*=\s*["']([^"']+)["']/i);
+      if (bundleMatch) {
+        try {
+          const decoded = JSON.parse(Buffer.from(bundleMatch[1], 'base64').toString());
+          const parts: Record<string, string> = {};
+          for (const [k, v] of Object.entries(decoded)) {
+            parts[k] = Buffer.from(v as string, 'base64').toString();
+          }
+
+          if (parts.b_host && parts.b_script && parts.b_ts && parts.b_rnd && parts.b_sig) {
+            let authScript = parts.b_script;
+            if (/\ba\.php$/i.test(authScript)) {
+              authScript = authScript.replace(/\ba\.php$/i, 'auth.php');
+            }
+
+            const authBase = parts.b_host.startsWith('http') 
+              ? new URL(authScript, parts.b_host).toString()
+              : new URL(authScript, pageUrl).toString();
+
+            const authUrl = `${authBase}?channel_id=${encodeURIComponent(channelKey)}&ts=${encodeURIComponent(parts.b_ts)}&rnd=${encodeURIComponent(parts.b_rnd)}&sig=${encodeURIComponent(parts.b_sig)}`;
+
+            try {
+              await axios.get(authUrl, {
+                headers: { 'User-Agent': USER_AGENT, 'Referer': pageUrl, 'Origin': new URL(pageUrl).origin },
+                timeout: 10000
+              });
+              logger.info('Legacy auth called');
+            } catch (e) {
+              logger.warn(`Legacy auth failed: ${e}`);
+            }
+          }
+        } catch (e) {
+          logger.warn(`Bundle decode failed: ${e}`);
+        }
+      }
+
+      // Step 8: Server lookup and build m3u8 URL
+      const hostRaw = new URL(pageUrl).origin;
+      const serverLookupUrl = `${hostRaw}/server_lookup.php?channel_id=${encodeURIComponent(channelKey)}`;
+
+      try {
+        const lookupResponse = await axios.get(serverLookupUrl, {
+          headers: { 'User-Agent': USER_AGENT, 'Referer': pageUrl, 'Origin': hostRaw },
+          timeout: 10000
+        });
+
+        const serverKey = lookupResponse.data?.server_key || 'top1/cdn';
+        let m3u8Url: string;
+
+        if (serverKey === 'top1/cdn') {
+          m3u8Url = `https://top1.newkso.ru/top1/cdn/${channelKey}/mono.m3u8`;
+        } else {
+          m3u8Url = `https://${serverKey}new.newkso.ru/${serverKey}/${channelKey}/mono.m3u8`;
+        }
+
+        logger.info(`Resolved stream URL: ${m3u8Url}`);
+
         return {
           url: m3u8Url,
-          headers: this.baseService.getHeaders(),
+          headers: {
+            'Referer': `${hostRaw}/`,
+            'Origin': hostRaw,
+            'User-Agent': USER_AGENT
+          },
+          quality: 'HD',
+          type: 'hls'
+        };
+      } catch (e) {
+        logger.error(`Server lookup failed: ${e}`);
+        
+        // Fallback: Try default server
+        const fallbackUrl = `https://top1.newkso.ru/top1/cdn/${channelKey}/mono.m3u8`;
+        return {
+          url: fallbackUrl,
+          headers: {
+            'Referer': `${hostRaw}/`,
+            'Origin': hostRaw,
+            'User-Agent': USER_AGENT
+          },
           quality: 'HD',
           type: 'hls'
         };
       }
-
-      // Method 3: Try original complex extraction (if page structure supports it)
-      const channelKey = this.extractChannelKey(html);
-      const xjzBundle = this.extractXJZBundle(html);
-
-      if (channelKey && xjzBundle) {
-        logger.info('Attempting complex extraction with auth...');
-        const authParams = this.decodeBundle(xjzBundle);
-
-        if (authParams) {
-          const iframeHost = this.extractIframeHost(html);
-          if (iframeHost) {
-            const authPath = this.getAuthPath();
-            const authUrl = `${iframeHost}${authPath}?channel_id=${channelKey}&ts=${authParams.b_ts}&rnd=${authParams.b_rnd}&sig=${authParams.b_sig}`;
-
-            try {
-              await client.get(authUrl, {
-                headers: this.baseService.getHeaders()
-              });
-            } catch (error) {
-              logger.warn(`Auth endpoint call failed: ${error}`);
-            }
-
-            const serverLookupUrl = `${iframeHost}/serverLookup/${channelKey}`;
-            let serverKey = 'top1';
-
-            try {
-              const serverResponse = await client.get(serverLookupUrl, {
-                headers: this.baseService.getHeaders()
-              });
-
-              if (serverResponse.data && serverResponse.data.server_key) {
-                serverKey = serverResponse.data.server_key;
-              }
-            } catch (error) {
-              logger.warn(`Server lookup failed: ${error}`);
-            }
-
-            const hlsUrl = this.constructHLSUrl(serverKey, channelId);
-            if (await this.testStreamUrl(hlsUrl)) {
-              logger.info(`Complex extraction succeeded: ${hlsUrl}`);
-              return {
-                url: hlsUrl,
-                headers: this.baseService.getHeaders(),
-                quality: 'HD',
-                type: 'hls'
-              };
-            }
-          }
-        }
-      }
-
-      logger.error('All stream extraction methods failed');
-      return null;
 
     } catch (error) {
       logger.error(`Error resolving stream: ${error}`);
@@ -187,193 +309,11 @@ export class DaddyLiveStreamResolver {
   }
 
   /**
-   * Generate common direct stream URL patterns
+   * Clear cached domain
    */
-  private generateDirectStreamUrls(channelId: string): string[] {
-    const servers = ['top1', 'top2', 'top3', 'cdn1', 'cdn2'];
-    const urls: string[] = [];
-
-    for (const server of servers) {
-      // Pattern 1: https://server.newkso.ru/server/cdn/channelId/mono.m3u8
-      urls.push(`https://${server}.newkso.ru/${server}/cdn/${channelId}/mono.m3u8`);
-
-      // Pattern 2: https://server.newkso.ru/server/channelId/mono.m3u8
-      urls.push(`https://${server}.newkso.ru/${server}/${channelId}/mono.m3u8`);
-    }
-
-    return urls;
-  }
-
-  /**
-   * Extract m3u8 URL directly from HTML
-   */
-  private extractM3U8FromHtml(html: string): string | null {
-    const patterns = [
-      /https?:\/\/[^"'\s]+\.m3u8[^"'\s]*/gi,
-      /"(https?:\/\/[^"]+\.m3u8[^"]*)"/gi,
-      /'(https?:\/\/[^']+\.m3u8[^']*)'/gi,
-      /source:\s*["']([^"']+\.m3u8[^"']*)["']/gi,
-      /src:\s*["']([^"']+\.m3u8[^"']*)["']/gi
-    ];
-
-    for (const pattern of patterns) {
-      const matches = Array.from(html.matchAll(pattern));
-      for (const match of matches) {
-        const url = match[1] || match[0];
-        if (url && url.includes('newkso') && !url.includes('ads')) {
-          logger.info(`Found potential m3u8 URL: ${url}`);
-          return url.replace(/["']/g, '').trim();
-        }
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Test if a stream URL is accessible
-   */
-  private async testStreamUrl(url: string): Promise<boolean> {
-    try {
-      const client = this.baseService.getClient();
-      const response = await client.head(url, {
-        headers: this.baseService.getHeaders(),
-        timeout: 5000,
-        validateStatus: (status) => status === 200 || status === 302 || status === 301
-      });
-
-      return response.status === 200 || response.status === 302 || response.status === 301;
-    } catch (error) {
-      return false;
-    }
-  }
-
-  /**
-   * Extract CHANNEL_KEY from HTML
-   */
-  private extractChannelKey(html: string): string | null {
-    const patterns = [
-      /const CHANNEL_KEY\s*=\s*["']([^"']+)["']/i,
-      /CHANNEL_KEY\s*=\s*["']([^"']+)["']/i,
-      /channel_key\s*[=:]\s*["']([^"']+)["']/i
-    ];
-
-    for (const pattern of patterns) {
-      const match = html.match(pattern);
-      if (match) {
-        logger.info(`Extracted CHANNEL_KEY: ${match[1]}`);
-        return match[1];
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Extract XJZ bundle from HTML
-   */
-  private extractXJZBundle(html: string): string | null {
-    const patterns = [
-      /const XJZ\s*=\s*["']([^"']+)["']/i,
-      /XJZ\s*=\s*["']([^"']+)["']/i,
-      /xjz\s*[=:]\s*["']([^"']+)["']/i
-    ];
-
-    for (const pattern of patterns) {
-      const match = html.match(pattern);
-      if (match) {
-        logger.info('Extracted XJZ bundle');
-        return match[1];
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Decode Base64 bundle to get auth parameters
-   */
-  private decodeBundle(bundle: string): StreamBundle | null {
-    try {
-      const decoded = Buffer.from(bundle, 'base64').toString('utf-8');
-      const params = JSON.parse(decoded);
-
-      if (params.b_ts && params.b_rnd && params.b_sig) {
-        return {
-          b_ts: params.b_ts,
-          b_rnd: params.b_rnd,
-          b_sig: params.b_sig
-        };
-      }
-
-      return null;
-    } catch (error) {
-      logger.error(`Failed to decode bundle: ${error}`);
-      return null;
-    }
-  }
-
-  /**
-   * Extract iframe host from HTML
-   */
-  private extractIframeHost(html: string): string | null {
-    // Look for patterns like: host = ['https://', 'domain', '.com/'].join('')
-    const patterns = [
-      /host\s*=\s*\[["']([^"']+)["'],\s*["']([^"']+)["'],\s*["']([^"']+)["']\]\.join\(['"]?['"]?\)/i,
-      /iframe.*?src=["']([^"']+)["']/i,
-      /https?:\/\/[^\/\s"']+\.newkso\.ru/i
-    ];
-
-    for (const pattern of patterns) {
-      const match = html.match(pattern);
-      if (match) {
-        if (pattern.source.includes('\\[')) {
-          // Array join pattern
-          const host = `${match[1]}${match[2]}${match[3]}`;
-          logger.info(`Extracted iframe host: ${host}`);
-          return host;
-        } else if (match[1]) {
-          // Direct URL pattern
-          const url = new URL(match[1]);
-          const host = `${url.protocol}//${url.host}/`;
-          logger.info(`Extracted iframe host: ${host}`);
-          return host;
-        }
-      }
-    }
-
-    // Fallback to common domain
-    logger.warn('Using fallback iframe host');
-    return 'https://news.newkso.ru/';
-  }
-
-  /**
-   * Get auth path using XOR decryption
-   * bx = [40, 60, 61, 33, 103, 57, 33, 57]
-   * XOR with 73 = "/getAuth"
-   */
-  private getAuthPath(): string {
-    const bx = [40, 60, 61, 33, 103, 57, 33, 57];
-    const authPath = bx.map(b => String.fromCharCode(b ^ 73)).join('');
-    return authPath;
-  }
-
-  /**
-   * Construct final HLS m3u8 URL
-   */
-  private constructHLSUrl(serverKey: string, channelId: string): string {
-    // Pattern from Kodi addon:
-    // https://{server_key}new.newkso.ru/{server_key}/{channel_id}/mono.m3u8
-    // OR
-    // https://top1.newkso.ru/top1/cdn/{channel_id}/mono.m3u8
-
-    if (serverKey.includes('/')) {
-      // Server key already contains path
-      return `https://${serverKey}new.newkso.ru/${serverKey}/${channelId}/mono.m3u8`;
-    } else {
-      // Simple server key
-      return `https://${serverKey}.newkso.ru/${serverKey}/cdn/${channelId}/mono.m3u8`;
-    }
+  clearCache(): void {
+    this.activeDomain = null;
+    this.lastDomainCheck = 0;
   }
 }
 

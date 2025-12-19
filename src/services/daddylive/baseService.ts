@@ -2,32 +2,33 @@ import axios, { AxiosInstance } from 'axios';
 import logger from '../../utils/logger';
 
 /**
- * DaddyLive Base Service
- * Handles HTTP client configuration for dlhd.dad
- * Updated Nov 2025 - Using actual DaddyLive website
+ * DaddyLive Base Service v2.0
+ * 
+ * Provides shared HTTP client configuration for DaddyLive services
+ * Updated Dec 2025 - Simplified; domain resolution moved to individual services
  */
 
-// Current active DaddyLive domain (daddylivestream.com redirects here)
-const DADDYLIVE_DOMAIN = 'https://dlhd.dad/';
+// Seed URL - DaddyLive uses redirects to reach the active domain
+export const SEED_URL = 'https://daddylive.sx/';
 
-const REQUIRED_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-  'Accept-Language': 'en-US,en;q=0.5',
-  'Accept-Encoding': 'gzip, deflate, br',
-  'Connection': 'keep-alive',
-  'Upgrade-Insecure-Requests': '1'
-};
+// User agent matching the Kodi addon v4.50
+export const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36';
 
 export class DaddyLiveBaseService {
   private client: AxiosInstance;
-  private activeDomain: string = DADDYLIVE_DOMAIN;
 
   constructor() {
     this.client = axios.create({
       timeout: 15000,
-      maxRedirects: 5,
-      headers: REQUIRED_HEADERS,
+      maxRedirects: 10,
+      headers: {
+        'User-Agent': USER_AGENT,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1'
+      },
       validateStatus: (status) => status >= 200 && status < 500
     });
   }
@@ -40,23 +41,43 @@ export class DaddyLiveBaseService {
   }
 
   /**
-   * Build full URL from path
+   * Get headers with referer and origin
    */
-  buildUrl(path: string): string {
-    const cleanPath = path.startsWith('/') ? path.slice(1) : path;
-    return `${DADDYLIVE_DOMAIN}${cleanPath}`;
+  getHeaders(baseDomain: string = 'https://daddyhd.com/'): Record<string, string> {
+    const origin = baseDomain.replace(/\/$/, '');
+    return {
+      'User-Agent': USER_AGENT,
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.5',
+      'Referer': baseDomain,
+      'Origin': origin
+    };
   }
 
   /**
-   * Get headers with referer and origin
+   * Resolve the active DaddyLive domain by following redirects
+   * Utility method that can be used by any service
    */
-  getHeaders(additionalHeaders?: Record<string, string>): Record<string, string> {
-    return {
-      ...REQUIRED_HEADERS,
-      'Referer': this.activeDomain,
-      'Origin': this.activeDomain.replace(/\/$/, ''),
-      ...additionalHeaders
-    };
+  async resolveActiveDomain(): Promise<string> {
+    try {
+      logger.info(`Resolving active DaddyLive domain from: ${SEED_URL}`);
+      
+      const response = await this.client.get(SEED_URL, {
+        maxRedirects: 10,
+        timeout: 10000
+      });
+
+      // Get final URL after all redirects
+      const finalUrl = response.request?.res?.responseUrl || response.config?.url || SEED_URL;
+      const parsed = new URL(finalUrl);
+      const domain = `${parsed.protocol}//${parsed.hostname}/`;
+      
+      logger.info(`Active DaddyLive domain: ${domain}`);
+      return domain;
+    } catch (error) {
+      logger.warn(`Failed to resolve domain: ${error}`);
+      return 'https://daddyhd.com/'; // Fallback
+    }
   }
 }
 
